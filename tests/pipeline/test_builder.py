@@ -28,6 +28,22 @@ if __name__ == "__main__":
 
 @patch("src.pipeline.builder.make_plan")
 @patch("src.pipeline.builder.generate_slide_code")
+def test_build_falls_back_when_layout_hint_unknown(mock_codegen, mock_plan, tmp_path):
+    mock_plan.return_value = {
+        "deck_meta": {"title": "T", "theme": {}, "fonts": {}, "slide_size": {"width_in": 13.333, "height_in": 7.5}},
+        "slides": [
+            {"slide_no": 1, "purpose": "p", "head_message": "Hi", "layout_hint": "totally-fake-pattern", "content": {}},
+        ],
+    }
+    mock_codegen.return_value = HAPPY_CODE
+    out = tmp_path / "deck.pptx"
+    build_presentation({"meta": {"title": "T"}, "sections": []},
+                      output_path=out, workdir=tmp_path / "work")
+    assert out.exists()
+
+
+@patch("src.pipeline.builder.make_plan")
+@patch("src.pipeline.builder.generate_slide_code")
 def test_build_presentation_end_to_end(mock_codegen, mock_plan, tmp_path):
     mock_plan.return_value = {
         "deck_meta": {"title": "T", "theme": {"primary": "#065A82"}, "fonts": {}, "slide_size": {"width_in": 13.333, "height_in": 7.5}},

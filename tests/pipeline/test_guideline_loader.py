@@ -2,6 +2,7 @@ from src.pipeline.guideline_loader import (
     load_pattern_index,
     get_pattern_section,
     get_pattern_summary_cards,
+    resolve_pattern,
 )
 
 
@@ -33,3 +34,19 @@ def test_summary_cards_one_line_per_pattern():
     assert len(cards) >= 9
     assert all("\n" not in c or c.count("\n") <= 1 for c in cards)
     assert any(c.startswith("Cover") for c in cards)
+
+
+def test_resolve_pattern_with_parenthetical():
+    assert resolve_pattern("Cover (표지)") == "Cover"
+
+
+def test_resolve_pattern_case_insensitive():
+    assert resolve_pattern("cover") == "Cover"
+
+
+def test_resolve_pattern_with_whitespace():
+    assert resolve_pattern("  Stat 강조  ") == "Stat 강조"
+
+
+def test_resolve_pattern_unknown_returns_none():
+    assert resolve_pattern("DOES_NOT_EXIST") is None

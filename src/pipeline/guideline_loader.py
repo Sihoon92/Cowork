@@ -38,11 +38,61 @@ def load_pattern_index() -> dict[str, str]:
     return index
 
 
+@lru_cache(maxsize=1)
+def _build_alias_index() -> dict[str, str]:
+    """Return a lowercase-normalised alias map: normalised_alias -> canonical_name.
+
+    For every canonical name in the pattern index we register:
+    - the canonical name itself (normalised)
+    - the raw heading from the guideline (normalised), which may include a
+      parenthetical subtitle, e.g. "stat 강조 (big number)" -> "Stat 강조"
+    """
+    doc = _read_doc()
+    matches = list(_HEADING_RE.finditer(doc))
+    alias_map: dict[str, str] = {}
+
+    for m in matches:
+        raw = m.group(1).strip()
+        canonical = re.sub(r"\s*\(.+\)\s*$", "", raw).strip()
+
+        # Register the canonical name as an alias of itself
+        alias_map[canonical.lower()] = canonical
+        # Register the raw heading (with parenthetical) as an alias
+        alias_map[raw.lower()] = canonical
+
+    return alias_map
+
+
+def _strip_parens(text: str) -> str:
+    """Remove a trailing parenthetical group, e.g. 'Cover (표지)' -> 'Cover'."""
+    return re.sub(r"\s*\(.+\)\s*$", "", text).strip()
+
+
+def resolve_pattern(name: str) -> str | None:
+    """Case-insensitive, whitespace-tolerant, parenthetical-tolerant lookup.
+
+    Returns the canonical pattern name if found, else None.
+    """
+    alias_map = _build_alias_index()
+    # 1. Exact (normalised) match against all aliases
+    normalised = name.strip().lower()
+    if normalised in alias_map:
+        return alias_map[normalised]
+
+    # 2. Strip parenthetical from the input and try again
+    stripped = _strip_parens(name.strip()).lower()
+    if stripped in alias_map:
+        return alias_map[stripped]
+
+    return None
+
+
 def get_pattern_section(name: str) -> str:
-    idx = load_pattern_index()
-    if name not in idx:
+    canonical = resolve_pattern(name)
+    if canonical is None:
         raise KeyError(f"unknown pattern: {name!r}")
-    return idx[name]
+    idx = load_pattern_index()
+    return idx[canonical]
 
 
 def get_pattern_summary_cards() -> list[str]:

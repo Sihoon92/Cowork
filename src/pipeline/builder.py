@@ -6,13 +6,27 @@ from pathlib import Path
 
 from src.pipeline.planner import make_plan
 from src.pipeline.code_generator import generate_slide_code
-from src.pipeline.guideline_loader import get_pattern_section
+from src.pipeline.guideline_loader import get_pattern_section, resolve_pattern
 from src.pptx.code_runner import render_slide_with_retry
 from src.pptx.merger import merge_slides
 
+_FALLBACK_PATTERN = "Bullet List"
+
+
+def _safe_get_pattern_section(layout_hint: str) -> tuple[str, str]:
+    """Return (resolved_layout_hint, pattern_guideline), falling back to Bullet List."""
+    canonical = resolve_pattern(layout_hint)
+    if canonical is None:
+        print(
+            f"WARNING: layout_hint {layout_hint!r} did not resolve to any known pattern; "
+            f"falling back to {_FALLBACK_PATTERN!r}"
+        )
+        canonical = _FALLBACK_PATTERN
+    return canonical, get_pattern_section(canonical)
+
 
 def _fix_callback_factory(layout_hint: str, slide_data: dict):
-    pattern_guideline = get_pattern_section(layout_hint)
+    _, pattern_guideline = _safe_get_pattern_section(layout_hint)
 
     def fix(original_code: str, traceback: str, _slide_data: dict) -> str:
         from src.pipeline.code_generator import build_codegen_prompt, extract_code_block
@@ -56,7 +70,7 @@ def build_presentation(
     slide_paths: list[Path] = []
     for slide_plan in plan["slides"]:
         layout_hint = slide_plan["layout_hint"]
-        pattern_guideline = get_pattern_section(layout_hint)
+        layout_hint, pattern_guideline = _safe_get_pattern_section(layout_hint)
         slide_data = {**slide_plan, "deck_meta": plan["deck_meta"]}
         code = generate_slide_code(
             layout_hint=layout_hint,
