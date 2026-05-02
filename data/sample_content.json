@@ -1,0 +1,36 @@
+{
+  "meta": {
+    "title": "CoWork PPTX 파이프라인 데모",
+    "audience": "개발팀",
+    "tone": "데이터 중심, 결론부터",
+    "duration_min": 5,
+    "language": "ko"
+  },
+  "sections": [
+    {
+      "id": "s1",
+      "topic": "배경",
+      "raw_facts": [
+        "Ollama gemma4:e4b 로컬 모델 활용",
+        "JSON 입력 → PPTX 자동 생성"
+      ]
+    },
+    {
+      "id": "s2",
+      "topic": "구성",
+      "raw_facts": [
+        "Layer 1: primitives (add_text, add_rect 등)",
+        "Layer 2: design guideline (33 패턴)",
+        "Layer 3: Gemma가 코드 직접 생성"
+      ]
+    },
+    {
+      "id": "s3",
+      "topic": "결과",
+      "raw_facts": [
+        "슬라이드별 독립 생성 후 머지",
+        "에러 시 최대 3회 재시도"
+      ]
+    }
+  ]
+}
