@@ -7,6 +7,9 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import Callable
+
+FixCallback = Callable[[str, str, dict], str]
 
 
 class CodeExecutionError(RuntimeError):
@@ -71,3 +74,35 @@ def run_slide_code(
         )
 
     return output_path
+
+
+def _tail(text: str, lines: int = 20) -> str:
+    return "\n".join(text.splitlines()[-lines:])
+
+
+def render_slide_with_retry(
+    code: str,
+    slide_data: dict,
+    output_path: Path,
+    *,
+    fix_callback: FixCallback,
+    max_retries: int = 3,
+    timeout: int = 30,
+) -> Path:
+    """Run slide code; on failure, ask fix_callback for a new full code and retry."""
+    last_err: CodeExecutionError | None = None
+    current_code = code
+    attempts = 0
+    while attempts <= max_retries:
+        try:
+            return run_slide_code(current_code, slide_data, output_path, timeout=timeout)
+        except CodeExecutionError as e:
+            last_err = e
+            attempts += 1
+            if attempts > max_retries:
+                break
+            current_code = fix_callback(current_code, _tail(e.stderr or str(e)), slide_data)
+    raise CodeExecutionError(
+        f"slide rendering failed after {max_retries} retries",
+        stderr=last_err.stderr if last_err else "",
+    )
