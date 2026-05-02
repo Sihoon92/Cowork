@@ -1,0 +1,21 @@
+You are a slide deck reviewer. Score the plan on 5 axes (1-5), list specific issues with slide_no, and suggest patches.
+
+## Axes (score 1=poor, 5=excellent)
+1. **story_flow** — Reading only the head_messages in order, does the narrative connect?
+2. **message_strength** — Is each head_message a CONCLUSION sentence (not just a topic label like "현황에 대해")?
+3. **content_balance** — Does any slide have >5 facts? Are 3+ consecutive slides text-only with no visual variety?
+4. **viz_fitness** — Does each layout_hint make sense for its content? (e.g. timeline data in a pie chart = bad)
+5. **layout_diversity** — Is the same layout_hint used in >50% of slides or in 3+ consecutive slides?
+
+## Plan
+{plan_json}
+
+## Output
+
+Output ONLY a JSON object in a ```json ... ``` code block:
+{{
+  "scores": {{"story_flow": int, "message_strength": int, "content_balance": int, "viz_fitness": int, "layout_diversity": int}},
+  "issues": [{{"slide_no": int|null, "axis": str, "msg": str}}],
+  "patches": [{{"slide_no": int, "field": "head_message"|"layout_hint"|"purpose", "new_value": str}}],
+  "verdict": "PASS" if all scores >= 4 else "REVISE"
+}}

@@ -26,9 +26,10 @@ if __name__ == "__main__":
 '''
 
 
+@patch("src.pipeline.builder.revise_plan_until_pass", side_effect=lambda p, **kw: p)
 @patch("src.pipeline.builder.make_plan")
 @patch("src.pipeline.builder.generate_slide_code")
-def test_build_falls_back_when_layout_hint_unknown(mock_codegen, mock_plan, tmp_path):
+def test_build_falls_back_when_layout_hint_unknown(mock_codegen, mock_plan, mock_revise, tmp_path):
     mock_plan.return_value = {
         "deck_meta": {"title": "T", "theme": {}, "fonts": {}, "slide_size": {"width_in": 13.333, "height_in": 7.5}},
         "slides": [
@@ -42,9 +43,10 @@ def test_build_falls_back_when_layout_hint_unknown(mock_codegen, mock_plan, tmp_
     assert out.exists()
 
 
+@patch("src.pipeline.builder.revise_plan_until_pass", side_effect=lambda p, **kw: p)
 @patch("src.pipeline.builder.make_plan")
 @patch("src.pipeline.builder.generate_slide_code")
-def test_build_presentation_end_to_end(mock_codegen, mock_plan, tmp_path):
+def test_build_presentation_end_to_end(mock_codegen, mock_plan, mock_revise, tmp_path):
     mock_plan.return_value = {
         "deck_meta": {"title": "T", "theme": {"primary": "#065A82"}, "fonts": {}, "slide_size": {"width_in": 13.333, "height_in": 7.5}},
         "slides": [

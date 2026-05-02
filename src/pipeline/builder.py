@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from src.pipeline.planner import make_plan
+from src.pipeline.critic import revise_plan_until_pass
 from src.pipeline.code_generator import generate_slide_code
 from src.pipeline.guideline_loader import get_pattern_section, resolve_pattern
 from src.pptx.code_runner import render_slide_with_retry
@@ -62,7 +63,11 @@ def build_presentation(
     slides_dir = workdir / "slides"
     slides_dir.mkdir(exist_ok=True)
 
-    plan = make_plan(content)
+    plan_raw = make_plan(content)
+    (workdir / "plan_raw.json").write_text(
+        json.dumps(plan_raw, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    plan = revise_plan_until_pass(plan_raw, max_rounds=3)
     (workdir / "plan.json").write_text(
         json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8"
     )
