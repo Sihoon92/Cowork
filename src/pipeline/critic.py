@@ -1,4 +1,4 @@
-"""Stage 3 — plan-level critique loop."""
+"""Stage 3 — plan-level critique loop, and Stage 6 — deck-level critique."""
 from __future__ import annotations
 
 import copy
@@ -55,3 +55,98 @@ def revise_plan_until_pass(
         if result["verdict"] == "PASS":
             return current
     return current
+
+
+# ---------------------------------------------------------------------------
+# Stage 6: deck-level critique
+# ---------------------------------------------------------------------------
+
+from src.pipeline.visual_critic import (  # noqa: E402
+    conversion_tools_available,
+    pptx_to_image,
+)
+from src.llm.ollama_client import chat_with_image, VISION_MODEL  # noqa: E402
+
+
+def critique_deck_storyline(plan: dict, *, model: str = DEFAULT_MODEL) -> dict:
+    """Feed head_messages of all slides to LLM. Return {issues, verdict}."""
+    head_lines = "\n".join(
+        f"{s['slide_no']}. {s['head_message']}"
+        for s in plan.get("slides", [])
+    )
+    template = (PROMPTS_DIR / "deck_storyline_critique.txt").read_text(encoding="utf-8")
+    prompt = template.format(head_messages=head_lines)
+    response = chat(prompt, model=model)
+    parsed = parse_json_block(response)
+    if not isinstance(parsed, dict):
+        raise ValueError("expected JSON object for storyline critique")
+    parsed.setdefault("issues", [])
+    parsed.setdefault("verdict", "PASS")
+    return parsed
+
+
+def make_thumbnail_grid(slide_paths: list[Path], out_path: Path, *, cols: int = 2) -> "Path | None":
+    """Combine per-slide pptx images into a grid JPEG.
+
+    Returns None if image conversion tools are not available or no slides could be converted.
+    Requires Pillow.
+    """
+    if not conversion_tools_available():
+        return None
+    try:
+        from PIL import Image
+    except ImportError:
+        return None
+
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    img_dir = out_path.parent / "deck_imgs"
+    img_dir.mkdir(exist_ok=True)
+
+    images: list[Path] = []
+    for sp in slide_paths:
+        img = pptx_to_image(sp, img_dir)
+        if img is not None:
+            images.append(img)
+    if not images:
+        return None
+
+    pil_imgs = [Image.open(p) for p in images]
+    # Normalize sizes — scale to first image's width
+    target_w = pil_imgs[0].width // 2  # downscale to keep grid manageable
+    resized = []
+    for im in pil_imgs:
+        ratio = target_w / im.width
+        resized.append(im.resize((target_w, int(im.height * ratio))))
+
+    rows = (len(resized) + cols - 1) // cols
+    cell_w = max(im.width for im in resized)
+    cell_h = max(im.height for im in resized)
+    grid = Image.new("RGB", (cell_w * cols, cell_h * rows), "white")
+    for i, im in enumerate(resized):
+        r, c = divmod(i, cols)
+        grid.paste(im, (c * cell_w, r * cell_h))
+    grid.save(out_path, "JPEG", quality=80)
+    return out_path
+
+
+def critique_deck_visual(
+    slide_paths: list[Path],
+    *,
+    out_dir: "Path | None" = None,
+    model: str = VISION_MODEL,
+) -> dict:
+    """Build thumbnail grid and ask vision LLM about deck-wide consistency."""
+    if out_dir is None:
+        out_dir = slide_paths[0].parent
+    grid = make_thumbnail_grid(slide_paths, out_dir / "deck_grid.jpg")
+    if grid is None:
+        return {"verdict": "SKIP", "issues": [], "reason": "tools or Pillow unavailable"}
+    prompt = (PROMPTS_DIR / "deck_visual_critique.txt").read_text(encoding="utf-8")
+    response = chat_with_image(prompt, str(grid), model=model)
+    parsed = parse_json_block(response)
+    if not isinstance(parsed, dict):
+        raise ValueError("expected JSON object for deck visual critique")
+    parsed.setdefault("issues", [])
+    parsed.setdefault("verdict", "PASS")
+    return parsed

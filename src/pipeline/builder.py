@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from src.pipeline.planner import make_plan
-from src.pipeline.critic import revise_plan_until_pass
+from src.pipeline.critic import revise_plan_until_pass, critique_deck_storyline, critique_deck_visual
 from src.pipeline.code_generator import generate_slide_code, build_codegen_prompt, extract_code_block
 from src.pipeline.guideline_loader import get_pattern_section, resolve_pattern
 from src.pipeline.text_critic import critique_slide_text
@@ -146,4 +146,16 @@ def build_presentation(
             except Exception:
                 pass
 
-    return merge_slides(slide_paths, output_path)
+    final_path = merge_slides(slide_paths, output_path)
+
+    # Stage 6: deck-level critique (storyline + visual). Best-effort, no auto-fix in MVP P6.
+    storyline = critique_deck_storyline(plan)
+    visual_consistency = critique_deck_visual(slide_paths, out_dir=workdir)
+    (workdir / "deck_critique.json").write_text(
+        json.dumps({
+            "storyline": storyline,
+            "visual_consistency": visual_consistency,
+        }, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return final_path
