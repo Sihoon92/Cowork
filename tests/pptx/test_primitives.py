@@ -77,3 +77,20 @@ def test_add_rect_rounded():
     rect = [s for s in slide.shapes if s.shape_type == MSO_SHAPE_TYPE.AUTO_SHAPE][0]
     from pptx.enum.shapes import MSO_SHAPE
     assert rect.auto_shape_type == MSO_SHAPE.ROUNDED_RECTANGLE
+
+
+from src.pptx.primitives import add_line, add_arrow
+
+
+def test_add_line_creates_connector():
+    prs, slide = _new_slide()
+    add_line(slide, x1=1, y1=1, x2=5, y2=3, color="#FF0000", width=2.0)
+    lines = [s for s in slide.shapes if s.shape_type == MSO_SHAPE_TYPE.LINE]
+    assert len(lines) == 1
+
+
+def test_add_arrow_creates_arrow_connector():
+    prs, slide = _new_slide()
+    add_arrow(slide, x1=0, y1=0, x2=4, y2=0, color="#000000")
+    # Arrow is a connector with end-arrow head; we just verify a shape was added
+    assert len(slide.shapes) == 1
