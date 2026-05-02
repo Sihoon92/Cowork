@@ -11,6 +11,8 @@ import tempfile
 from pathlib import Path
 from typing import Callable
 
+from src.util import log
+
 FixCallback = Callable[[str, str, dict], str]
 
 # Names guaranteed available inside the executed script via the injected preamble,
@@ -267,6 +269,7 @@ def render_slide_with_retry(
             attempts += 1
             if attempts > max_retries:
                 break
+            log.warn(f"slide failed (attempt {attempts}), asking LLM to fix: {str(e)[:80]}")
             current_code = fix_callback(current_code, _tail(e.stderr or str(e)), slide_data)
     raise CodeExecutionError(
         f"slide rendering failed after {max_retries} retries",

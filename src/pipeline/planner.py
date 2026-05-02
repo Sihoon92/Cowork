@@ -7,6 +7,7 @@ from pathlib import Path
 
 from src.llm.ollama_client import chat, DEFAULT_MODEL
 from src.pipeline.guideline_loader import get_pattern_summary_cards
+from src.util import log
 
 PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
 
@@ -37,16 +38,19 @@ def _call_llm_with_json_retry(prompt: str, model: str, max_retries: int = 2):
         except ValueError as exc:
             last_error = exc
             if attempt < max_retries:
+                log.warn(f"JSON parse failed (attempt {attempt + 1}), retrying")
                 current_prompt = prompt + _RETRY_SUFFIX
     raise last_error  # type: ignore[misc]
 
 
 def generate_outline(content: dict, *, model: str = DEFAULT_MODEL) -> list[dict]:
+    log.step("LLM call: outline")
     template = (PROMPTS_DIR / "story_outline.txt").read_text(encoding="utf-8")
     prompt = template.format(content_json=json.dumps(content, ensure_ascii=False, indent=2))
     parsed = _call_llm_with_json_retry(prompt, model=model)
     if not isinstance(parsed, list):
         raise ValueError(f"expected JSON array, got {type(parsed).__name__}")
+    log.ok(f"got {len(parsed)} slides in outline")
     return parsed
 
 
@@ -89,6 +93,7 @@ def generate_slide_detail(
     *,
     model: str = DEFAULT_MODEL,
 ) -> dict:
+    log.step(f"LLM call: detail for slide {outline['slide_no']}")
     template = (PROMPTS_DIR / "slide_detail.txt").read_text(encoding="utf-8")
     cards = "\n".join(f"- {c}" for c in get_pattern_summary_cards())
     prompt = template.format(

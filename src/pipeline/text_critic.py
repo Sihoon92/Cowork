@@ -8,6 +8,7 @@ from pptx import Presentation
 
 from src.llm.ollama_client import chat, DEFAULT_MODEL
 from src.pipeline.planner import parse_json_block
+from src.util import log
 
 PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
 
@@ -34,6 +35,7 @@ def critique_slide_text(
     model: str = DEFAULT_MODEL,
 ) -> dict:
     """Ask LLM if the rendered text matches the plan. Returns {issues, verdict}."""
+    log.step("LLM call: text critique")
     texts = extract_slide_text(pptx_path)
     extracted = "\n".join(f"- {t}" for t in texts) if texts else "(no text on slide)"
     template = (PROMPTS_DIR / "text_critique.txt").read_text(encoding="utf-8")

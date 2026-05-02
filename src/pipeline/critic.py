@@ -7,12 +7,14 @@ from pathlib import Path
 
 from src.llm.ollama_client import chat, DEFAULT_MODEL
 from src.pipeline.planner import parse_json_block
+from src.util import log
 
 PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
 
 
 def critique_plan(plan: dict, *, model: str = DEFAULT_MODEL) -> dict:
     """Call LLM to critique the plan. Returns {scores, issues, patches, verdict}."""
+    log.step("LLM call: plan critique")
     template = (PROMPTS_DIR / "plan_critique.txt").read_text(encoding="utf-8")
     prompt = template.format(plan_json=json.dumps(plan, ensure_ascii=False, indent=2))
     response = chat(prompt, model=model)
@@ -22,6 +24,12 @@ def critique_plan(plan: dict, *, model: str = DEFAULT_MODEL) -> dict:
     for required in ("scores", "issues", "patches", "verdict"):
         if required not in parsed:
             raise ValueError(f"critique missing key: {required}")
+    scores = parsed.get("scores", {})
+    verdict = parsed.get("verdict", "?")
+    patches = parsed.get("patches", [])
+    log.info(f"scores={scores} verdict={verdict}")
+    if patches:
+        log.info(f"{len(patches)} patches suggested")
     return parsed
 
 
@@ -48,11 +56,14 @@ def revise_plan_until_pass(
 ) -> dict:
     """Loop critique → apply patches → re-critique until PASS or max rounds."""
     current = plan
-    for _ in range(max_rounds):
+    for round_no in range(max_rounds):
+        log.info(f"plan critique round {round_no + 1}/{max_rounds}")
         result = critique_plan(current, model=model)
         if result["patches"]:
             current = apply_patches(current, result["patches"])
-        if result["verdict"] == "PASS":
+        verdict = result["verdict"]
+        log.info(f"round {round_no + 1} verdict: {verdict}")
+        if verdict == "PASS":
             return current
     return current
 
@@ -70,6 +81,7 @@ from src.llm.ollama_client import chat_with_image, VISION_MODEL  # noqa: E402
 
 def critique_deck_storyline(plan: dict, *, model: str = DEFAULT_MODEL) -> dict:
     """Feed head_messages of all slides to LLM. Return {issues, verdict}."""
+    log.step("LLM call: deck storyline critique")
     head_lines = "\n".join(
         f"{s['slide_no']}. {s['head_message']}"
         for s in plan.get("slides", [])
@@ -82,6 +94,7 @@ def critique_deck_storyline(plan: dict, *, model: str = DEFAULT_MODEL) -> dict:
         raise ValueError("expected JSON object for storyline critique")
     parsed.setdefault("issues", [])
     parsed.setdefault("verdict", "PASS")
+    log.info(f"storyline verdict={parsed['verdict']} issues={len(parsed['issues'])}")
     return parsed
 
 

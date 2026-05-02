@@ -8,6 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.pipeline.builder import build_presentation
+from src.util import log
 
 
 def main():
@@ -19,6 +20,10 @@ def main():
     content = json.loads(content_path.read_text(encoding="utf-8"))
     out = build_presentation(content, output_path=output_path, workdir=workdir)
     print(f"OK -> {out}")
+
+    log.stage("Done")
+    log.ok(f"output: {out}")
+    log.info(f"workdir: {workdir}")
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from src.llm.ollama_client import chat_with_image, VISION_MODEL
 from src.pipeline.planner import parse_json_block
+from src.util import log
 
 PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
 
@@ -64,8 +65,10 @@ def critique_slide_visual(
         out_dir = slide_pptx_path.parent / "img"
     image_path = pptx_to_image(slide_pptx_path, out_dir)
     if image_path is None:
+        log.warn("visual SKIP -- soffice/pdftoppm missing, skipping visual critique")
         return {"verdict": "SKIP", "issues": [], "reason": "image conversion unavailable"}
 
+    log.step("LLM call: visual critique")
     prompt = (PROMPTS_DIR / "visual_critique.txt").read_text(encoding="utf-8")
     response = chat_with_image(prompt, str(image_path), model=model)
     parsed = parse_json_block(response)
@@ -73,4 +76,5 @@ def critique_slide_visual(
         raise ValueError("expected JSON object for visual critique")
     parsed.setdefault("issues", [])
     parsed.setdefault("verdict", "PASS")
+    log.info(f"visual verdict={parsed['verdict']} issues={len(parsed['issues'])}")
     return parsed
