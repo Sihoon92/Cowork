@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+output/
+.superpowers/
+*.pptx
+!data/sample_*.pptx
+.venv/
+.env
