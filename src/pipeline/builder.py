@@ -9,6 +9,7 @@ from src.pipeline.critic import revise_plan_until_pass
 from src.pipeline.code_generator import generate_slide_code, build_codegen_prompt, extract_code_block
 from src.pipeline.guideline_loader import get_pattern_section, resolve_pattern
 from src.pipeline.text_critic import critique_slide_text
+from src.pipeline.visual_critic import critique_slide_visual
 from src.pptx.code_runner import render_slide_with_retry
 from src.pptx.merger import merge_slides
 
@@ -119,5 +120,30 @@ def build_presentation(
                 )
             except Exception:
                 pass  # keep original if fix fails
+
+        # Stage 5-B: visual critique with one fix attempt (skips if soffice missing)
+        v_critique = critique_slide_visual(out)
+        if v_critique["verdict"] == "FIX":
+            issues_text = "\n".join(f"- {i['msg']}" for i in v_critique["issues"])
+            fix_prompt = (
+                f"The previous slide had these visual defects:\n{issues_text}\n"
+                f"Regenerate the FULL python script fixing them. Keep all coordinates within "
+                f"0.4 inch margin from slide edges. Do not let text or shapes overlap."
+            )
+            base = build_codegen_prompt(
+                layout_hint=layout_hint,
+                pattern_guideline=pattern_guideline,
+                slide_data=slide_data,
+            )
+            from src.llm.ollama_client import chat as _chat
+            fixed = extract_code_block(_chat(base + "\n\n" + fix_prompt))
+            try:
+                render_slide_with_retry(
+                    fixed, slide_data, out,
+                    fix_callback=_fix_callback_factory(layout_hint, slide_data),
+                    max_retries=1,
+                )
+            except Exception:
+                pass
 
     return merge_slides(slide_paths, output_path)

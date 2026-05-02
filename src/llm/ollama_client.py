@@ -1,9 +1,11 @@
+import base64
 import requests
 import json
 
 OLLAMA_BASE_URL = "http://localhost:11434"
 DEFAULT_MODEL = "qwen2.5-coder:7b"
 DEFAULT_TIMEOUT = 300
+VISION_MODEL = "qwen2.5vl:7b"
 
 
 def chat(prompt: str, model: str = DEFAULT_MODEL, stream: bool = False, timeout: int = DEFAULT_TIMEOUT) -> str:
@@ -25,6 +27,28 @@ def chat(prompt: str, model: str = DEFAULT_MODEL, stream: bool = False, timeout:
         return result
     else:
         return response.json()["response"]
+
+
+def chat_with_image(
+    prompt: str,
+    image_path: str,
+    *,
+    model: str = VISION_MODEL,
+    timeout: int = DEFAULT_TIMEOUT,
+) -> str:
+    """Send a prompt + image to Ollama vision model. Returns the response text."""
+    with open(image_path, "rb") as f:
+        b64 = base64.b64encode(f.read()).decode("ascii")
+    url = f"{OLLAMA_BASE_URL}/api/generate"
+    payload = {
+        "model": model,
+        "prompt": prompt,
+        "stream": False,
+        "images": [b64],
+    }
+    response = requests.post(url, json=payload, timeout=timeout)
+    response.raise_for_status()
+    return response.json()["response"]
 
 
 def list_models() -> list[str]:
