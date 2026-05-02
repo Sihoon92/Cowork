@@ -1,0 +1,25 @@
+You expand a single slide outline into full detail.
+
+Pick the BEST design pattern for this slide from the catalog (one name from the catalog), then produce structured `content` for that pattern.
+
+Available pattern catalog (one-liners):
+{pattern_cards}
+
+Detailed guideline for the pattern you choose will be passed downstream when generating the actual slide; for now you only need to choose the pattern name and produce content matching it.
+
+Slide outline:
+- slide_no: {slide_no}
+- purpose: {purpose}
+- head_message: {head_message}
+
+Relevant section content (raw facts):
+{section_facts}
+
+Output ONLY a JSON object in a ```json ... ``` code block:
+{{
+  "slide_no": {slide_no},
+  "purpose": "{purpose}",
+  "head_message": "{head_message}",
+  "layout_hint": "<exactly one pattern name from the catalog>",
+  "content": {{ ...pattern-specific keys... }}
+}}

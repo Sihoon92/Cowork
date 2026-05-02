@@ -39,3 +39,44 @@ def test_generate_outline_returns_list_of_dicts(mock_chat):
     assert isinstance(out, list)
     assert out[0]["slide_no"] == 1
     assert "open" == out[0]["purpose"]
+
+
+from src.pipeline.planner import generate_slide_detail, derive_deck_meta, make_plan
+
+
+@patch("src.pipeline.planner.chat")
+def test_generate_slide_detail_returns_full_dict(mock_chat):
+    mock_chat.return_value = """```json
+{
+  "slide_no": 1,
+  "purpose": "open",
+  "head_message": "Hi",
+  "layout_hint": "Cover",
+  "content": {"title": "Hi", "subtitle": "subj"}
+}
+```"""
+    out = generate_slide_detail(
+        outline={"slide_no": 1, "purpose": "open", "head_message": "Hi"},
+        section_facts=[],
+    )
+    assert out["layout_hint"] == "Cover"
+    assert out["content"]["title"] == "Hi"
+
+
+def test_derive_deck_meta_uses_default_theme_when_no_tone():
+    meta = derive_deck_meta({"meta": {"title": "T"}})
+    assert "theme" in meta
+    assert meta["theme"]["primary"].startswith("#")
+    assert meta["slide_size"] == {"width_in": 13.333, "height_in": 7.5}
+
+
+@patch("src.pipeline.planner.chat")
+def test_make_plan_combines_outline_and_details(mock_chat):
+    mock_chat.side_effect = [
+        '```json\n[{"slide_no":1,"purpose":"open","head_message":"Hi"}]\n```',  # outline
+        '```json\n{"slide_no":1,"purpose":"open","head_message":"Hi","layout_hint":"Cover","content":{}}\n```',  # detail
+    ]
+    plan = make_plan({"meta": {"title": "T"}, "sections": []})
+    assert "deck_meta" in plan
+    assert len(plan["slides"]) == 1
+    assert plan["slides"][0]["layout_hint"] == "Cover"
