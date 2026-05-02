@@ -126,3 +126,57 @@ def add_slide(prs, data):
     assert out.exists()
     from pptx import Presentation
     assert len(Presentation(out).slides) == 1
+
+
+import time
+
+
+def test_run_slide_code_rejects_syntax_error_quickly(tmp_path):
+    bad = "def add_slide(prs, data):\n    font_size=16, color=\n"
+    out = tmp_path / "x.pptx"
+    t0 = time.time()
+    try:
+        run_slide_code(bad, {}, out, timeout=30)
+    except CodeExecutionError as e:
+        elapsed = time.time() - t0
+        assert "SyntaxError" in str(e) or "syntax" in str(e).lower()
+        assert elapsed < 1.0, f"AST validation took {elapsed:.2f}s, expected <1s"
+    else:
+        raise AssertionError("expected CodeExecutionError on syntax error")
+
+
+def test_run_slide_code_rejects_undefined_name_quickly(tmp_path):
+    # Calls a name that's not defined anywhere and not in the preamble.
+    bad = '''
+def add_slide(prs, data):
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    totally_undefined_function(slide)
+'''
+    out = tmp_path / "x.pptx"
+    t0 = time.time()
+    try:
+        run_slide_code(bad, {}, out, timeout=30)
+    except CodeExecutionError as e:
+        elapsed = time.time() - t0
+        assert "undefined" in str(e).lower() or "NameError" in str(e)
+        assert elapsed < 1.0, f"AST validation took {elapsed:.2f}s, expected <1s"
+    else:
+        raise AssertionError("expected CodeExecutionError on undefined name")
+
+
+def test_run_slide_code_accepts_valid_code(tmp_path):
+    # Existing HAPPY_CODE should still work — sanity check the validator doesn't false-positive
+    out = tmp_path / "ok.pptx"
+    run_slide_code(HAPPY_CODE, {"msg": "Hi"}, out)
+    assert out.exists()
+
+
+def test_validate_code_allows_data_dict_access():
+    from src.pptx.code_runner import _validate_code
+    code = '''
+def add_slide(prs, data):
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    title = data["title"]
+    set_bg(slide, "#FFFFFF")
+'''
+    _validate_code(code)  # should not raise

@@ -1,6 +1,8 @@
 """Subprocess-based execution of LLM-generated slide code."""
 from __future__ import annotations
 
+import ast
+import builtins as _builtins
 import json
 import os
 import subprocess
@@ -10,6 +12,20 @@ from pathlib import Path
 from typing import Callable
 
 FixCallback = Callable[[str, str, dict], str]
+
+# Names guaranteed available inside the executed script via the injected preamble,
+# the standard main block, or standard builtins.
+# `add_slide` is the contract function that the main block always calls — it may not
+# be defined by every snippet (e.g. snippets that only raise for testing purposes),
+# so we allow it here to avoid false positives on the caller side.
+_PREAMBLE_NAMES = frozenset({
+    "Presentation", "Inches", "Pt",
+    "add_text", "add_rect", "add_line", "add_arrow", "add_image", "set_bg",
+    "_json", "_sys",
+    "add_slide",  # called by _STANDARD_MAIN_BLOCK; defined by user code
+})
+
+_BUILTIN_NAMES = frozenset(dir(_builtins))
 
 _GUARANTEED_PREAMBLE = '''# --- guaranteed imports (injected) ---
 from pptx import Presentation
@@ -66,6 +82,94 @@ def inject_preamble(code: str) -> str:
     return _GUARANTEED_PREAMBLE + "\n" + code
 
 
+def _collect_assign_targets(target: ast.AST, out: set[str]) -> None:
+    """Recursively collect bound names from assignment targets."""
+    if isinstance(target, ast.Name):
+        out.add(target.id)
+    elif isinstance(target, (ast.Tuple, ast.List)):
+        for elt in target.elts:
+            _collect_assign_targets(elt, out)
+    elif isinstance(target, ast.Starred):
+        _collect_assign_targets(target.value, out)
+    # Attribute / Subscript targets bind nothing new at name level.
+
+
+def _collect_defined_names(tree: ast.AST) -> set[str]:
+    """Walk AST and collect every name that gets bound (def, assign, import, arg)."""
+    defined: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            defined.add(node.name)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                args = node.args
+                for arg in (
+                    list(args.posonlyargs)
+                    + list(args.args)
+                    + list(args.kwonlyargs)
+                ):
+                    defined.add(arg.arg)
+                if args.vararg:
+                    defined.add(args.vararg.arg)
+                if args.kwarg:
+                    defined.add(args.kwarg.arg)
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                _collect_assign_targets(target, defined)
+        elif isinstance(node, ast.AnnAssign) and node.target:
+            _collect_assign_targets(node.target, defined)
+        elif isinstance(node, ast.AugAssign):
+            _collect_assign_targets(node.target, defined)
+        elif isinstance(node, (ast.For, ast.AsyncFor)):
+            _collect_assign_targets(node.target, defined)
+        elif isinstance(node, (ast.With, ast.AsyncWith)):
+            for item in node.items:
+                if item.optional_vars:
+                    _collect_assign_targets(item.optional_vars, defined)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                defined.add(alias.asname or alias.name.split(".")[0])
+        elif isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                defined.add(alias.asname or alias.name)
+        elif isinstance(node, ast.comprehension):
+            _collect_assign_targets(node.target, defined)
+        elif isinstance(node, ast.Lambda):
+            args = node.args
+            for arg in (
+                list(args.posonlyargs)
+                + list(args.args)
+                + list(args.kwonlyargs)
+            ):
+                defined.add(arg.arg)
+    return defined
+
+
+def _validate_code(code: str) -> None:
+    """Raise CodeExecutionError if *code* has a syntax error or obviously undefined names.
+
+    This is a fast pre-flight check (microseconds) that avoids spawning a 30-second
+    subprocess for clearly broken LLM output.
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError as exc:
+        raise CodeExecutionError(
+            f"SyntaxError: {exc.msg} at line {exc.lineno}",
+            stderr=str(exc),
+        )
+
+    defined = _collect_defined_names(tree)
+    allowed = defined | _PREAMBLE_NAMES | _BUILTIN_NAMES
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+            if node.id not in allowed:
+                raise CodeExecutionError(
+                    f"undefined name likely: '{node.id}' at line {node.lineno}",
+                    stderr=f"name '{node.id}' is not defined",
+                )
+
+
 class CodeExecutionError(RuntimeError):
     def __init__(self, message: str, *, stderr: str = "", returncode: int = -1):
         super().__init__(message)
@@ -83,6 +187,7 @@ def run_slide_code(
     """Execute slide-generation code in a subprocess; return output_path on success."""
     code = ensure_main_block(code)
     code = inject_preamble(code)
+    _validate_code(code)  # short-circuit obviously broken code before spawning subprocess
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
