@@ -50,3 +50,30 @@ def test_add_text_alignment_center():
     tb = [s for s in slide.shapes if s.has_text_frame][0]
     from pptx.enum.text import PP_ALIGN
     assert tb.text_frame.paragraphs[0].alignment == PP_ALIGN.CENTER
+
+
+from src.pptx.primitives import add_rect
+
+
+def test_add_rect_with_fill():
+    prs, slide = _new_slide()
+    add_rect(slide, x=1, y=1, w=2, h=1, fill="#065A82")
+    rects = [s for s in slide.shapes if s.shape_type == MSO_SHAPE_TYPE.AUTO_SHAPE]
+    assert len(rects) == 1
+    fc = rects[0].fill.fore_color.rgb
+    assert (fc[0], fc[1], fc[2]) == (0x06, 0x5A, 0x82)
+
+
+def test_add_rect_with_border():
+    prs, slide = _new_slide()
+    add_rect(slide, x=0, y=0, w=1, h=1, fill="#FFFFFF", border_color="#000000", border_width=2.0)
+    rect = [s for s in slide.shapes if s.shape_type == MSO_SHAPE_TYPE.AUTO_SHAPE][0]
+    assert rect.line.color.rgb is not None
+
+
+def test_add_rect_rounded():
+    prs, slide = _new_slide()
+    add_rect(slide, x=0, y=0, w=1, h=1, fill="#FF0000", rounded=True)
+    rect = [s for s in slide.shapes if s.shape_type == MSO_SHAPE_TYPE.AUTO_SHAPE][0]
+    from pptx.enum.shapes import MSO_SHAPE
+    assert rect.auto_shape_type == MSO_SHAPE.ROUNDED_RECTANGLE

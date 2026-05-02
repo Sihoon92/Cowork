@@ -4,6 +4,7 @@ from __future__ import annotations
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
+from pptx.enum.shapes import MSO_SHAPE
 
 _ALIGN = {
     "left": PP_ALIGN.LEFT,
@@ -49,3 +50,26 @@ def add_text(
     run.font.bold = bold
     run.font.italic = italic
     run.font.color.rgb = _hex_to_rgb(color)
+
+
+def add_rect(
+    slide,
+    x: float, y: float, w: float, h: float,
+    *,
+    fill: str = "#FFFFFF",
+    border_color: str | None = None,
+    border_width: float = 0.0,
+    rounded: bool = False,
+) -> None:
+    shape_type = MSO_SHAPE.ROUNDED_RECTANGLE if rounded else MSO_SHAPE.RECTANGLE
+    shape = slide.shapes.add_shape(shape_type, Inches(x), Inches(y), Inches(w), Inches(h))
+    shape.fill.solid()
+    shape.fill.fore_color.rgb = _hex_to_rgb(fill)
+    if border_color is None:
+        shape.line.fill.background()
+    else:
+        shape.line.color.rgb = _hex_to_rgb(border_color)
+        shape.line.width = Pt(border_width)
+    # Strip default text frame contents to keep shape clean
+    if shape.has_text_frame:
+        shape.text_frame.text = ""
