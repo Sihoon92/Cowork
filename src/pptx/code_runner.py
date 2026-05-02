@@ -30,9 +30,14 @@ def run_slide_code(
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    env = os.environ.copy()
-    env["PYTHONIOENCODING"] = "utf-8"
-    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2])
+    env = {
+        "PYTHONIOENCODING": "utf-8",
+        "PYTHONPATH": str(Path(__file__).resolve().parents[2]),
+        "PATH": os.environ.get("PATH", ""),
+        "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""),  # required on Windows
+        "TEMP": os.environ.get("TEMP", ""),
+        "TMP": os.environ.get("TMP", ""),
+    }
 
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".py", delete=False, encoding="utf-8"
