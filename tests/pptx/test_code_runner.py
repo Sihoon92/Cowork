@@ -56,7 +56,7 @@ def test_run_slide_code_timeout(tmp_path):
         raise AssertionError("expected CodeExecutionError on timeout")
 
 
-from src.pptx.code_runner import render_slide_with_retry
+from src.pptx.code_runner import render_slide_with_retry, ensure_main_block
 
 
 def test_render_slide_with_retry_succeeds_first_try(tmp_path):
@@ -94,3 +94,35 @@ def test_render_slide_with_retry_gives_up_after_max(tmp_path):
         assert "after 2 retries" in str(e) or "retries" in str(e)
     else:
         raise AssertionError("expected CodeExecutionError after max retries")
+
+
+def test_ensure_main_block_keeps_existing():
+    code = "def add_slide(prs, data): pass\nif __name__ == '__main__':\n    prs.save(sys.argv[1])\n"
+    out = ensure_main_block(code)
+    assert out == code  # no change
+
+
+def test_ensure_main_block_appends_when_missing():
+    code = "def add_slide(prs, data): pass\n"
+    out = ensure_main_block(code)
+    assert "if __name__" in out
+    assert "prs.save(sys.argv[1])" in out
+    assert "add_slide(prs, data)" in out
+
+
+def test_run_slide_code_works_when_main_block_missing(tmp_path):
+    # Code defines add_slide but omits the entry block
+    body_only = '''
+from pptx import Presentation
+from pptx.util import Inches
+
+def add_slide(prs, data):
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    box = slide.shapes.add_textbox(Inches(1), Inches(1), Inches(5), Inches(1))
+    box.text_frame.text = data["msg"]
+'''
+    out = tmp_path / "wrapped.pptx"
+    run_slide_code(body_only, {"msg": "Hi"}, out)
+    assert out.exists()
+    from pptx import Presentation
+    assert len(Presentation(out).slides) == 1

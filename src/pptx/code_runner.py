@@ -11,6 +11,44 @@ from typing import Callable
 
 FixCallback = Callable[[str, str, dict], str]
 
+_STANDARD_MAIN_BLOCK = '''
+
+if __name__ == "__main__":
+    import json, sys
+    from pptx import Presentation
+    from pptx.util import Inches
+    data = json.loads(sys.stdin.read())
+    prs = Presentation()
+    prs.slide_width = Inches(13.333)
+    prs.slide_height = Inches(7.5)
+    add_slide(prs, data)
+    prs.save(sys.argv[1])
+'''
+
+
+def ensure_main_block(code: str) -> str:
+    """Ensure generated code has a complete __main__ entry block with prs.save.
+
+    If the code already contains both ``if __name__`` and ``prs.save``, it is
+    returned unchanged.  Otherwise any partial ``if __name__`` block is stripped
+    and the standard entry block is appended.
+    """
+    if "if __name__" in code and "prs.save" in code:
+        return code
+
+    # Strip any existing (incomplete) if __name__ block before appending.
+    lines = code.splitlines()
+    trimmed: list[str] = []
+    skip = False
+    for line in lines:
+        if line.strip().startswith("if __name__"):
+            skip = True
+        if skip:
+            continue
+        trimmed.append(line)
+    base = "\n".join(trimmed)
+    return base + _STANDARD_MAIN_BLOCK
+
 
 class CodeExecutionError(RuntimeError):
     def __init__(self, message: str, *, stderr: str = "", returncode: int = -1):
@@ -27,6 +65,7 @@ def run_slide_code(
     timeout: int = 30,
 ) -> Path:
     """Execute slide-generation code in a subprocess; return output_path on success."""
+    code = ensure_main_block(code)
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
