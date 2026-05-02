@@ -106,7 +106,7 @@ def test_ensure_main_block_appends_when_missing():
     code = "def add_slide(prs, data): pass\n"
     out = ensure_main_block(code)
     assert "if __name__" in out
-    assert "prs.save(sys.argv[1])" in out
+    assert "prs.save(_sys.argv[1])" in out
     assert "add_slide(prs, data)" in out
 
 

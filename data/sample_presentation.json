@@ -1,0 +1,76 @@
+{
+  "title": "CoWork 시스템 소개",
+  "slides": [
+    {
+      "background": { "color": "#1C2833" },
+      "textboxes": [
+        {
+          "left": 1.0, "top": 2.5, "width": 11.3, "height": 1.5,
+          "lines": [
+            {
+              "text": "CoWork PPTX 시스템",
+              "font_size": 44,
+              "bold": true,
+              "color": "#FFFFFF",
+              "align": "center"
+            }
+          ]
+        },
+        {
+          "left": 1.0, "top": 4.2, "width": 11.3, "height": 0.8,
+          "lines": [
+            {
+              "text": "JSON → 슬라이드 자동 변환 테스트",
+              "font_size": 20,
+              "color": "#AAB7B8",
+              "align": "center"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "background": { "color": "#FFFFFF" },
+      "textboxes": [
+        {
+          "left": 0.8, "top": 0.5, "width": 11.7, "height": 1.0,
+          "lines": [
+            {
+              "text": "시스템 구성",
+              "font_size": 36,
+              "bold": true,
+              "color": "#1C2833",
+              "align": "left"
+            }
+          ]
+        },
+        {
+          "left": 0.8, "top": 1.8, "width": 11.7, "height": 4.0,
+          "lines": [
+            { "text": "1.  Ollama  →  Local LLM (gemma4:e4b)", "font_size": 18, "color": "#2C3E50" },
+            { "text": "2.  JSON Schema  →  슬라이드 데이터 정의", "font_size": 18, "color": "#2C3E50" },
+            { "text": "3.  python-pptx  →  PPTX 파일 생성", "font_size": 18, "color": "#2C3E50" },
+            { "text": "4.  CoWork Agent  →  전체 워크플로우 조율", "font_size": 18, "color": "#2C3E50" }
+          ]
+        }
+      ]
+    },
+    {
+      "background": { "color": "#2E4053" },
+      "textboxes": [
+        {
+          "left": 1.0, "top": 3.0, "width": 11.3, "height": 1.2,
+          "lines": [
+            {
+              "text": "테스트 성공!",
+              "font_size": 48,
+              "bold": true,
+              "color": "#F4F6F6",
+              "align": "center"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

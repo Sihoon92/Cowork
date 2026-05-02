@@ -11,18 +11,26 @@ from typing import Callable
 
 FixCallback = Callable[[str, str, dict], str]
 
+_GUARANTEED_PREAMBLE = '''# --- guaranteed imports (injected) ---
+from pptx import Presentation
+from pptx.util import Inches, Pt
+from src.pptx.primitives import (
+    add_text, add_rect, add_line, add_arrow, add_image, set_bg,
+)
+import json as _json
+import sys as _sys
+# --- end injected ---
+'''
+
 _STANDARD_MAIN_BLOCK = '''
 
 if __name__ == "__main__":
-    import json, sys
-    from pptx import Presentation
-    from pptx.util import Inches
-    data = json.loads(sys.stdin.read())
+    data = _json.loads(_sys.stdin.read())
     prs = Presentation()
     prs.slide_width = Inches(13.333)
     prs.slide_height = Inches(7.5)
     add_slide(prs, data)
-    prs.save(sys.argv[1])
+    prs.save(_sys.argv[1])
 '''
 
 
@@ -50,6 +58,14 @@ def ensure_main_block(code: str) -> str:
     return base + _STANDARD_MAIN_BLOCK
 
 
+def inject_preamble(code: str) -> str:
+    """Prepend guaranteed imports so missing imports in LLM output don't crash.
+
+    Python tolerates duplicate imports; this is cheaper than parsing the AST.
+    """
+    return _GUARANTEED_PREAMBLE + "\n" + code
+
+
 class CodeExecutionError(RuntimeError):
     def __init__(self, message: str, *, stderr: str = "", returncode: int = -1):
         super().__init__(message)
@@ -66,6 +82,7 @@ def run_slide_code(
 ) -> Path:
     """Execute slide-generation code in a subprocess; return output_path on success."""
     code = ensure_main_block(code)
+    code = inject_preamble(code)
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 

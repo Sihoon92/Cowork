@@ -57,15 +57,18 @@ def add_rect(
     slide,
     x: float, y: float, w: float, h: float,
     *,
-    fill: str = "#FFFFFF",
+    fill: str | None = "#FFFFFF",
     border_color: str | None = None,
     border_width: float = 0.0,
     rounded: bool = False,
 ) -> None:
     shape_type = MSO_SHAPE.ROUNDED_RECTANGLE if rounded else MSO_SHAPE.RECTANGLE
     shape = slide.shapes.add_shape(shape_type, Inches(x), Inches(y), Inches(w), Inches(h))
-    shape.fill.solid()
-    shape.fill.fore_color.rgb = _hex_to_rgb(fill)
+    if fill is None:
+        shape.fill.background()
+    else:
+        shape.fill.solid()
+        shape.fill.fore_color.rgb = _hex_to_rgb(fill)
     if border_color is None:
         shape.line.fill.background()
     else:

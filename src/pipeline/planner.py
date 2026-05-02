@@ -5,7 +5,7 @@ import json
 import re
 from pathlib import Path
 
-from src.llm.ollama_client import chat
+from src.llm.ollama_client import chat, DEFAULT_MODEL
 from src.pipeline.guideline_loader import get_pattern_summary_cards
 
 PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
@@ -41,7 +41,7 @@ def _call_llm_with_json_retry(prompt: str, model: str, max_retries: int = 2):
     raise last_error  # type: ignore[misc]
 
 
-def generate_outline(content: dict, *, model: str = "gemma4:e4b") -> list[dict]:
+def generate_outline(content: dict, *, model: str = DEFAULT_MODEL) -> list[dict]:
     template = (PROMPTS_DIR / "story_outline.txt").read_text(encoding="utf-8")
     prompt = template.format(content_json=json.dumps(content, ensure_ascii=False, indent=2))
     parsed = _call_llm_with_json_retry(prompt, model=model)
@@ -85,7 +85,7 @@ def generate_slide_detail(
     outline: dict,
     section_facts: list[str],
     *,
-    model: str = "gemma4:e4b",
+    model: str = DEFAULT_MODEL,
 ) -> dict:
     template = (PROMPTS_DIR / "slide_detail.txt").read_text(encoding="utf-8")
     cards = "\n".join(f"- {c}" for c in get_pattern_summary_cards())
@@ -105,7 +105,7 @@ def generate_slide_detail(
     return parsed
 
 
-def make_plan(content: dict, *, model: str = "gemma4:e4b") -> dict:
+def make_plan(content: dict, *, model: str = DEFAULT_MODEL) -> dict:
     outline = generate_outline(content, model=model)
     slides: list[dict] = []
     for o in outline:

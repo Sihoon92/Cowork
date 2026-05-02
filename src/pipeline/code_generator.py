@@ -5,7 +5,7 @@ import json
 import re
 from pathlib import Path
 
-from src.llm.ollama_client import chat
+from src.llm.ollama_client import chat, DEFAULT_MODEL
 
 PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / "code_generation.txt"
 
@@ -39,7 +39,7 @@ def generate_slide_code(
     layout_hint: str,
     pattern_guideline: str,
     slide_data: dict,
-    model: str = "gemma4:e4b",
+    model: str = DEFAULT_MODEL,
 ) -> str:
     prompt = build_codegen_prompt(
         layout_hint=layout_hint,
