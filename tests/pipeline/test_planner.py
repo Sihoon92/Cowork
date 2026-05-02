@@ -96,10 +96,38 @@ def test_outline_gives_up_after_max_retries(mock_chat):
 @patch("src.pipeline.planner.chat")
 def test_make_plan_combines_outline_and_details(mock_chat):
     mock_chat.side_effect = [
-        '```json\n[{"slide_no":1,"purpose":"open","head_message":"Hi"}]\n```',  # outline
+        '```json\n[{"slide_no":1,"purpose":"open","head_message":"Hi","section_id":null}]\n```',  # outline with section_id
         '```json\n{"slide_no":1,"purpose":"open","head_message":"Hi","layout_hint":"Cover","content":{}}\n```',  # detail
     ]
     plan = make_plan({"meta": {"title": "T"}, "sections": []})
     assert "deck_meta" in plan
     assert len(plan["slides"]) == 1
     assert plan["slides"][0]["layout_hint"] == "Cover"
+    assert plan["slides"][0].get("section_id") is None  # preserved from outline
+
+
+def test_section_facts_for_returns_only_matching_section():
+    from src.pipeline.planner import _section_facts_for
+    content = {
+        "sections": [
+            {"id": "s1", "raw_facts": ["fact A", "fact B"]},
+            {"id": "s2", "raw_facts": ["fact C"]},
+        ]
+    }
+    assert _section_facts_for(content, "s1") == ["fact A", "fact B"]
+    assert _section_facts_for(content, "s2") == ["fact C"]
+    assert _section_facts_for(content, None) == []
+    assert _section_facts_for(content, "missing") == []
+
+
+@patch("src.pipeline.planner.chat")
+def test_make_plan_preserves_section_id_through_detail(mock_chat):
+    mock_chat.side_effect = [
+        '```json\n[{"slide_no":2,"purpose":"data","head_message":"H","section_id":"s1"}]\n```',
+        '```json\n{"slide_no":2,"purpose":"data","head_message":"H","layout_hint":"Bullet List","content":{"bullets":["fact A","fact B"]}}\n```',
+    ]
+    plan = make_plan({
+        "meta": {"title": "T"},
+        "sections": [{"id": "s1", "raw_facts": ["fact A", "fact B"]}],
+    })
+    assert plan["slides"][0]["section_id"] == "s1"

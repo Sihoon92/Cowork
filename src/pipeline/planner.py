@@ -73,12 +73,14 @@ def derive_deck_meta(content: dict) -> dict:
     }
 
 
-def _section_facts_for(content: dict, slide_no: int) -> list[str]:
-    # MVP: return all raw_facts from all sections. Later we can map by topic.
-    facts: list[str] = []
+def _section_facts_for(content: dict, section_id: str | None) -> list[str]:
+    """Return raw_facts for the given section_id. Empty list if section_id is None or unknown."""
+    if section_id is None:
+        return []
     for sec in content.get("sections", []):
-        facts.extend(sec.get("raw_facts", []))
-    return facts
+        if sec.get("id") == section_id:
+            return list(sec.get("raw_facts", []))
+    return []
 
 
 def generate_slide_detail(
@@ -102,6 +104,7 @@ def generate_slide_detail(
     for required in ("slide_no", "purpose", "head_message", "layout_hint", "content"):
         if required not in parsed:
             raise ValueError(f"slide detail missing key: {required}")
+    parsed["section_id"] = outline.get("section_id")
     return parsed
 
 
@@ -109,7 +112,7 @@ def make_plan(content: dict, *, model: str = DEFAULT_MODEL) -> dict:
     outline = generate_outline(content, model=model)
     slides: list[dict] = []
     for o in outline:
-        facts = _section_facts_for(content, o["slide_no"])
+        facts = _section_facts_for(content, o.get("section_id"))
         detail = generate_slide_detail(o, facts, model=model)
         slides.append(detail)
     return {
