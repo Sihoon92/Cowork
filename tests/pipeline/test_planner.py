@@ -71,6 +71,29 @@ def test_derive_deck_meta_uses_default_theme_when_no_tone():
 
 
 @patch("src.pipeline.planner.chat")
+def test_outline_retries_on_invalid_json(mock_chat):
+    mock_chat.side_effect = [
+        "no json fence here",  # first call - bad
+        '```json\n[{"slide_no":1,"purpose":"p","head_message":"H"}]\n```',  # second - good
+    ]
+    out = generate_outline({"meta": {"title": "T"}, "sections": []})
+    assert len(out) == 1
+    assert mock_chat.call_count == 2
+
+
+@patch("src.pipeline.planner.chat")
+def test_outline_gives_up_after_max_retries(mock_chat):
+    mock_chat.return_value = "no fence ever"
+    try:
+        generate_outline({"meta": {"title": "T"}, "sections": []})
+    except ValueError:
+        # max_retries=2 means initial + 2 retries = 3 calls total
+        assert mock_chat.call_count == 3
+        return
+    raise AssertionError("expected ValueError")
+
+
+@patch("src.pipeline.planner.chat")
 def test_make_plan_combines_outline_and_details(mock_chat):
     mock_chat.side_effect = [
         '```json\n[{"slide_no":1,"purpose":"open","head_message":"Hi"}]\n```',  # outline
