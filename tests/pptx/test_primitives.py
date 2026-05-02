@@ -94,3 +94,15 @@ def test_add_arrow_creates_arrow_connector():
     add_arrow(slide, x1=0, y1=0, x2=4, y2=0, color="#000000")
     # Arrow is a connector with end-arrow head; we just verify a shape was added
     assert len(slide.shapes) == 1
+
+
+from pathlib import Path
+from src.pptx.primitives import add_image
+
+
+def test_add_image_inserts_picture():
+    prs, slide = _new_slide()
+    fixture = Path(__file__).parent / "fixtures" / "dot.png"
+    add_image(slide, x=1, y=1, w=2, h=2, image_path=str(fixture))
+    pictures = [s for s in slide.shapes if s.shape_type == MSO_SHAPE_TYPE.PICTURE]
+    assert len(pictures) == 1

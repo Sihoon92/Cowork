@@ -112,3 +112,11 @@ def add_arrow(
     tail.set("type", "triangle")
     tail.set("w", "med")
     tail.set("len", "med")
+
+
+def add_image(
+    slide,
+    x: float, y: float, w: float, h: float,
+    image_path: str,
+) -> None:
+    slide.shapes.add_picture(image_path, Inches(x), Inches(y), Inches(w), Inches(h))
