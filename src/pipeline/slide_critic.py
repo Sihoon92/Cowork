@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.llm.ollama_client import VISION_MODEL, chat_with_image
+from src.llm.client import VISION_MODEL, chat_with_image
 from src.pipeline.planner import parse_json_block
 from src.pipeline.schemas import SlideCritique, VISUAL_AXIS_CODES
 from src.util import log

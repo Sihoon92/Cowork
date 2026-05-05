@@ -17,7 +17,7 @@ import json
 from pathlib import Path
 from typing import Iterable
 
-from src.llm.ollama_client import DEFAULT_MODEL, chat
+from src.llm.client import DEFAULT_MODEL, chat
 from src.pipeline.checks import check_slide_content
 from src.pipeline.planner import parse_json_block
 from src.pipeline.schemas import (

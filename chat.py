@@ -1,6 +1,6 @@
 """Ollama 대화형 CLI."""
 import sys
-from src.llm.ollama_client import is_available, chat, DEFAULT_MODEL
+from src.llm.client import is_available, chat, DEFAULT_MODEL
 
 def main():
     if not is_available():

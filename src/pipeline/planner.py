@@ -5,7 +5,7 @@ import json
 import re
 from pathlib import Path
 
-from src.llm.ollama_client import chat, DEFAULT_MODEL
+from src.llm.client import chat, DEFAULT_MODEL
 from src.pipeline.checks import check_slide_content
 from src.pipeline.recipes import RECIPES
 from src.pipeline.schemas import (

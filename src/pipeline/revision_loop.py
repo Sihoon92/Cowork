@@ -25,7 +25,7 @@ from typing import Callable
 from pptx import Presentation
 from pptx.util import Inches
 
-from src.llm.ollama_client import DEFAULT_MODEL, VISION_MODEL
+from src.llm.client import DEFAULT_MODEL, VISION_MODEL
 from src.pipeline.patcher import (
     PatchResult, apply_patches, dump_patch_result, generate_patches,
 )

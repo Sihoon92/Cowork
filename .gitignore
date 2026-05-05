@@ -7,6 +7,7 @@ __pycache__/
 !data/sample_*.pptx
 .venv/
 .env
+.env.local
 output/
 temp_image.png
 .vscode/

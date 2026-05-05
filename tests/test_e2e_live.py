@@ -5,7 +5,7 @@ import json
 import pytest
 from pptx import Presentation
 
-from src.llm.ollama_client import is_available
+from src.llm.client import is_available
 from src.pipeline.builder import build_presentation
 
 

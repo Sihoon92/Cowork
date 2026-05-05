@@ -5,7 +5,7 @@ import json
 import re
 from pathlib import Path
 
-from src.llm.ollama_client import chat, DEFAULT_MODEL
+from src.llm.client import chat, DEFAULT_MODEL
 
 PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / "code_generation.md"
 

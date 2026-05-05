@@ -11,7 +11,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from src.llm.ollama_client import chat, chat_with_image, DEFAULT_MODEL, VISION_MODEL
+from src.llm.client import chat, chat_with_image, DEFAULT_MODEL, VISION_MODEL
 from src.pipeline.planner import parse_json_block
 from src.util import log
 
