@@ -1,83 +1,26 @@
-"""Stage 3 — plan-level critique loop, and Stage 6 — deck-level critique."""
+"""Stage 6 — deck-level critique (storyline + visual consistency).
+
+Per-slide critique was retired with the recipe migration: pydantic schema
+validation in the planner now catches the structural defects the old per-slide
+critic was reactively patching. Deck-level checks remain because they need
+cross-slide context the planner doesn't have.
+"""
 from __future__ import annotations
 
-import copy
-import json
+import shutil
+import subprocess
 from pathlib import Path
 
-from src.llm.ollama_client import chat, DEFAULT_MODEL
+from src.llm.ollama_client import chat, chat_with_image, DEFAULT_MODEL, VISION_MODEL
 from src.pipeline.planner import parse_json_block
 from src.util import log
 
 PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
 
 
-def critique_plan(plan: dict, *, model: str = DEFAULT_MODEL) -> dict:
-    """Call LLM to critique the plan. Returns {scores, issues, patches, verdict}."""
-    log.step("LLM call: plan critique")
-    template = (PROMPTS_DIR / "plan_critique.txt").read_text(encoding="utf-8")
-    prompt = template.format(plan_json=json.dumps(plan, ensure_ascii=False, indent=2))
-    response = chat(prompt, model=model)
-    parsed = parse_json_block(response)
-    if not isinstance(parsed, dict):
-        raise ValueError("expected JSON object for critique")
-    for required in ("scores", "issues", "patches", "verdict"):
-        if required not in parsed:
-            raise ValueError(f"critique missing key: {required}")
-    scores = parsed.get("scores", {})
-    verdict = parsed.get("verdict", "?")
-    patches = parsed.get("patches", [])
-    log.info(f"scores={scores} verdict={verdict}")
-    if patches:
-        log.info(f"{len(patches)} patches suggested")
-    return parsed
-
-
-def apply_patches(plan: dict, patches: list[dict]) -> dict:
-    """Return a NEW plan with patches applied. Patches with unknown slide_no are skipped."""
-    new_plan = copy.deepcopy(plan)
-    by_no = {s["slide_no"]: s for s in new_plan["slides"]}
-    for patch in patches:
-        target = by_no.get(patch.get("slide_no"))
-        if target is None:
-            continue
-        field = patch.get("field")
-        if field not in ("head_message", "layout_hint", "purpose"):
-            continue
-        target[field] = patch.get("new_value", target.get(field))
-    return new_plan
-
-
-def revise_plan_until_pass(
-    plan: dict,
-    *,
-    max_rounds: int = 3,
-    model: str = DEFAULT_MODEL,
-) -> dict:
-    """Loop critique → apply patches → re-critique until PASS or max rounds."""
-    current = plan
-    for round_no in range(max_rounds):
-        log.info(f"plan critique round {round_no + 1}/{max_rounds}")
-        result = critique_plan(current, model=model)
-        if result["patches"]:
-            current = apply_patches(current, result["patches"])
-        verdict = result["verdict"]
-        log.info(f"round {round_no + 1} verdict: {verdict}")
-        if verdict == "PASS":
-            return current
-    return current
-
-
 # ---------------------------------------------------------------------------
-# Stage 6: deck-level critique
+# Storyline critique — operates on text only (head_messages)
 # ---------------------------------------------------------------------------
-
-from src.pipeline.visual_critic import (  # noqa: E402
-    conversion_tools_available,
-    pptx_to_image,
-)
-from src.llm.ollama_client import chat_with_image, VISION_MODEL  # noqa: E402
-
 
 def critique_deck_storyline(plan: dict, *, model: str = DEFAULT_MODEL) -> dict:
     """Feed head_messages of all slides to LLM. Return {issues, verdict}."""
@@ -86,7 +29,7 @@ def critique_deck_storyline(plan: dict, *, model: str = DEFAULT_MODEL) -> dict:
         f"{s['slide_no']}. {s['head_message']}"
         for s in plan.get("slides", [])
     )
-    template = (PROMPTS_DIR / "deck_storyline_critique.txt").read_text(encoding="utf-8")
+    template = (PROMPTS_DIR / "deck_storyline_critique.md").read_text(encoding="utf-8")
     prompt = template.format(head_messages=head_lines)
     response = chat(prompt, model=model)
     parsed = parse_json_block(response)
@@ -98,13 +41,41 @@ def critique_deck_storyline(plan: dict, *, model: str = DEFAULT_MODEL) -> dict:
     return parsed
 
 
-def make_thumbnail_grid(slide_paths: list[Path], out_path: Path, *, cols: int = 2) -> "Path | None":
+# ---------------------------------------------------------------------------
+# Visual critique — needs LibreOffice/soffice to convert pptx → png
+# ---------------------------------------------------------------------------
+
+def _conversion_tools_available() -> bool:
+    """LibreOffice (soffice) is required to convert pptx → png for the grid."""
+    return shutil.which("soffice") is not None or shutil.which("libreoffice") is not None
+
+
+def _pptx_to_image(pptx_path: Path, out_dir: Path) -> "Path | None":
+    """Convert one .pptx to a .png in out_dir; returns the image path or None."""
+    bin_name = shutil.which("soffice") or shutil.which("libreoffice")
+    if bin_name is None:
+        return None
+    out_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        subprocess.run(
+            [bin_name, "--headless", "--convert-to", "png",
+             "--outdir", str(out_dir), str(pptx_path)],
+            check=True, capture_output=True, timeout=60,
+        )
+    except (subprocess.SubprocessError, OSError):
+        return None
+    candidate = out_dir / f"{pptx_path.stem}.png"
+    return candidate if candidate.exists() else None
+
+
+def make_thumbnail_grid(
+    slide_paths: list[Path], out_path: Path, *, cols: int = 2,
+) -> "Path | None":
     """Combine per-slide pptx images into a grid JPEG.
 
-    Returns None if image conversion tools are not available or no slides could be converted.
-    Requires Pillow.
+    Returns None if conversion tools or Pillow are unavailable.
     """
-    if not conversion_tools_available():
+    if not _conversion_tools_available():
         return None
     try:
         from PIL import Image
@@ -118,15 +89,14 @@ def make_thumbnail_grid(slide_paths: list[Path], out_path: Path, *, cols: int = 
 
     images: list[Path] = []
     for sp in slide_paths:
-        img = pptx_to_image(sp, img_dir)
+        img = _pptx_to_image(sp, img_dir)
         if img is not None:
             images.append(img)
     if not images:
         return None
 
     pil_imgs = [Image.open(p) for p in images]
-    # Normalize sizes — scale to first image's width
-    target_w = pil_imgs[0].width // 2  # downscale to keep grid manageable
+    target_w = pil_imgs[0].width // 2
     resized = []
     for im in pil_imgs:
         ratio = target_w / im.width
@@ -155,7 +125,7 @@ def critique_deck_visual(
     grid = make_thumbnail_grid(slide_paths, out_dir / "deck_grid.jpg")
     if grid is None:
         return {"verdict": "SKIP", "issues": [], "reason": "tools or Pillow unavailable"}
-    prompt = (PROMPTS_DIR / "deck_visual_critique.txt").read_text(encoding="utf-8")
+    prompt = (PROMPTS_DIR / "deck_visual_critique.md").read_text(encoding="utf-8")
     response = chat_with_image(prompt, str(grid), model=model)
     parsed = parse_json_block(response)
     if not isinstance(parsed, dict):

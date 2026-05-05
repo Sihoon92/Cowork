@@ -7,7 +7,7 @@ from pathlib import Path
 
 from src.llm.ollama_client import chat, DEFAULT_MODEL
 
-PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / "code_generation.txt"
+PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / "code_generation.md"
 
 _FENCE_RE = re.compile(r"```python\s*\n(.*?)```", re.DOTALL)
 

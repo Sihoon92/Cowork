@@ -21,8 +21,15 @@ FixCallback = Callable[[str, str, dict], str]
 # be defined by every snippet (e.g. snippets that only raise for testing purposes),
 # so we allow it here to avoid false positives on the caller side.
 _PREAMBLE_NAMES = frozenset({
-    "Presentation", "Inches", "Pt",
+    "Presentation", "Inches", "Pt", "Emu", "Cm",
+    "RGBColor",
+    "MSO_SHAPE", "PP_ALIGN", "MSO_ANCHOR",
+    # primitives
     "add_text", "add_rect", "add_line", "add_arrow", "add_image", "set_bg",
+    # layout toolkit
+    "apply_master", "Rect", "Stack", "place",
+    # components
+    "add_card", "add_metric", "add_pill", "add_quote", "add_step_box",
     "_json", "_sys",
     "add_slide",  # called by _STANDARD_MAIN_BLOCK; defined by user code
 })
@@ -31,9 +38,14 @@ _BUILTIN_NAMES = frozenset(dir(_builtins))
 
 _GUARANTEED_PREAMBLE = '''# --- guaranteed imports (injected) ---
 from pptx import Presentation
-from pptx.util import Inches, Pt
+from pptx.util import Inches, Pt, Emu, Cm
+from pptx.dml.color import RGBColor
+from pptx.enum.shapes import MSO_SHAPE
+from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from src.pptx.primitives import (
     add_text, add_rect, add_line, add_arrow, add_image, set_bg,
+    apply_master, Rect, Stack, place,
+    add_card, add_metric, add_pill, add_quote, add_step_box,
 )
 import json as _json
 import sys as _sys
@@ -248,6 +260,18 @@ def _tail(text: str, lines: int = 20) -> str:
     return "\n".join(text.splitlines()[-lines:])
 
 
+def _error_excerpt(text: str, tail_lines: int = 20) -> str:
+    """Return first non-empty line + tail, so LLM sees both 'where' and 'what failed'."""
+    all_lines = text.splitlines()
+    if not all_lines:
+        return text
+    first = next((ln for ln in all_lines if ln.strip()), all_lines[0])
+    tail = all_lines[-tail_lines:]
+    if first in tail:
+        return "\n".join(tail)
+    return first + "\n...\n" + "\n".join(tail)
+
+
 def render_slide_with_retry(
     code: str,
     slide_data: dict,
@@ -270,7 +294,14 @@ def render_slide_with_retry(
             if attempts > max_retries:
                 break
             log.warn(f"slide failed (attempt {attempts}), asking LLM to fix: {str(e)[:80]}")
-            current_code = fix_callback(current_code, _tail(e.stderr or str(e)), slide_data)
+            if e.stderr:
+                # Surface the actual Python error (last meaningful traceback line)
+                # so the user log shows what's breaking — not just exit code.
+                err_lines = [ln for ln in e.stderr.splitlines() if ln.strip()]
+                # Last line is usually 'ErrorType: message'; previous one often shows file:line
+                if err_lines:
+                    log.detail(err_lines[-1][:200])
+            current_code = fix_callback(current_code, _error_excerpt(e.stderr or str(e)), slide_data)
     raise CodeExecutionError(
         f"slide rendering failed after {max_retries} retries",
         stderr=last_err.stderr if last_err else "",

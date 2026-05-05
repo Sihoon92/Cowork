@@ -5,13 +5,26 @@ import json
 OLLAMA_BASE_URL = "http://localhost:11434"
 DEFAULT_MODEL = "qwen2.5-coder:7b"
 DEFAULT_TIMEOUT = 300
-VISION_MODEL = "qwen2.5vl:7b"
+VISION_MODEL = "gemma4:e4b"
 
 
-def chat(prompt: str, model: str = DEFAULT_MODEL, stream: bool = False, timeout: int = DEFAULT_TIMEOUT) -> str:
-    """Send a prompt to Ollama and return the response text."""
+def chat(
+    prompt: str,
+    model: str = DEFAULT_MODEL,
+    stream: bool = False,
+    timeout: int = DEFAULT_TIMEOUT,
+    format: str | dict | None = None,
+) -> str:
+    """Send a prompt to Ollama and return the response text.
+
+    `format` enables Ollama's structured output. Pass "json" to constrain the
+    decoder to syntactically valid JSON, or a JSON schema dict to also enforce
+    structure. None preserves free-form text behaviour.
+    """
     url = f"{OLLAMA_BASE_URL}/api/generate"
     payload = {"model": model, "prompt": prompt, "stream": stream}
+    if format is not None:
+        payload["format"] = format
 
     response = requests.post(url, json=payload, timeout=timeout)
     response.raise_for_status()

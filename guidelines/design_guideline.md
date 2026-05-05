@@ -2,6 +2,8 @@
 
 This document tells the LLM **what to draw and when**, not how to write the code.
 For drawing primitives see [primitives_api.md](primitives_api.md).
+For deck-wide layout rules see [layout_grid.md](layout_grid.md).
+For high-level building blocks see [components.md](components.md).
 
 When generating a slide, pick the single most appropriate pattern below for the
 content, then compose primitives to realize it. Patterns are organized by intent.
@@ -11,6 +13,19 @@ content, then compose primitives to realize it. Patterns are organized by intent
 - **구성**: how to lay out the slide using primitives
 - **주의**: common mistakes to avoid
 
+## Universal rules (apply to every body slide)
+
+1. Call `apply_master(slide, deck_meta, head_message, sub_message=None)` first;
+   it returns the **Body Rect** to place content into.
+2. Use **Grid / Stack / Anchor** for positioning. Never write raw `(x, y)`
+   numbers. See [layout_grid.md](layout_grid.md).
+3. Use **components** (`Card`, `Metric`, `Pill`, `Quote`, `StepBox`) for
+   content blocks. Fall back to raw `add_text` only when no component fits.
+   See [components.md](components.md) for the pattern → component mapping.
+4. Reference theme colors by **role** (`background`, `head_text`, `head_rule`,
+   `body_text`, `bullet`, `accent`). Never hard-code hex.
+5. Cover and Section Divider slides skip rule 1 (no master, full canvas).
+
 ---
 
 ## A. 수치·데이터 표현
@@ -19,6 +34,16 @@ content, then compose primitives to realize it. Patterns are organized by intent
 - **언제**: 핵심 수치 1~3개를 청중에게 각인시킬 때. KPI, 성과 보고
 - **구성**: 헤드 메시지(상단, 28pt bold) + 수치 1~3개를 가로로 큰 글자(72pt+, primary 색)로 배치 + 각 수치 아래 단위·라벨(14pt) + 하단에 1줄 해석(16pt)
 - **주의**: 수치는 슬라이드 1장에 최대 3개. 수치보다 큰 시각 요소가 있으면 강조 효과가 무너짐
+- **content 스키마**: `{"key_statistics": [{"value": "30", "unit": "%", "label": "..."}]}`
+- **codegen 규칙**:
+  ```python
+  stats = data["content"]["key_statistics"]
+  span = 12 // max(1, len(stats))
+  for i, s in enumerate(stats):
+      add_metric(slide, deck_meta,
+                 rect=body.col(1 + i * span, span=span),
+                 value=s["value"], unit=s.get("unit"), label=s.get("label", ""))
+  ```
 
 ## B. 비교·대조
 
@@ -26,11 +51,50 @@ content, then compose primitives to realize it. Patterns are organized by intent
 - **언제**: 2~4개 옵션을 여러 기준으로 동시에 비교, 의사결정 지원
 - **구성**: 1행=헤더(primary 색 사각형 + 흰 글씨), 1열=옵션 라벨. 각 셀은 짧은 텍스트(●●● 또는 점수). 추천안 행은 굵은 테두리 또는 accent 강조
 - **주의**: 셀이 6×6 초과 시 가독성↓. 기준 5개 이하
+- **content 스키마**: `{"criteria": ["기준A", "기준B"], "options": [{"name": "옵션1", "scores": ["●●●", "●●○"]}]}`
+- **codegen 규칙**:
+  ```python
+  criteria = data["content"]["criteria"]
+  options = data["content"]["options"]
+  total_rows = len(options) + 1
+  ncols = 1 + len(criteria)
+  span = max(1, 12 // ncols)
+  # header row
+  for j, c in enumerate(criteria):
+      add_text(slide, rect=body.row(1, total=total_rows).col(1 + (j + 1) * span, span=span),
+               text=c, font_size=13, bold=True, align="center",
+               color=deck_meta["theme"]["accent"])
+  # data rows
+  for i, opt in enumerate(options, start=2):
+      add_text(slide, rect=body.row(i, total=total_rows).col(1, span=span),
+               text=opt["name"], font_size=13, bold=True, align="left",
+               color=deck_meta["theme"]["body_text"])
+      for j, score in enumerate(opt["scores"]):
+          add_text(slide, rect=body.row(i, total=total_rows).col(1 + (j + 1) * span, span=span),
+                   text=score, font_size=13, align="center",
+                   color=deck_meta["theme"]["body_text"])
+  ```
 
 ### As-Is / To-Be
 - **언제**: 현재 상태와 개선 후 상태를 대비할 때. 변화의 방향성 강조
 - **구성**: 슬라이드 좌·우 50% 분할. 왼쪽 As-Is(neutral 어두운 톤), 오른쪽 To-Be(primary 색). 중앙에 큰 화살표(→). 각 영역 상단에 라벨, 하단에 3~4개 bullet
 - **주의**: As-Is에 감정적 단어 금지("나쁜", "문제"). 사실 기술만. To-Be는 측정 가능한 결과로
+- **content 스키마**: `{"as_is": ["..."], "to_be": ["..."]}`
+- **codegen 규칙**:
+  ```python
+  left  = body.col(1, span=6)
+  right = body.col(7, span=6)
+  asis_card = add_card(slide, deck_meta, rect=left,  title="As-Is")
+  tobe_card = add_card(slide, deck_meta, rect=right, title="To-Be")
+  s_l = Stack(left.inset(0.4),  direction="vertical", gap=0.2)
+  for item in data["content"]["as_is"]:
+      s_l.add_text(slide, item, h=0.5, font_size=14)
+  s_r = Stack(right.inset(0.4), direction="vertical", gap=0.2)
+  for item in data["content"]["to_be"]:
+      s_r.add_text(slide, item, h=0.5, font_size=14)
+  add_arrow(slide, from_=(asis_card, "MR"), to_=(tobe_card, "ML"),
+            color=deck_meta["theme"]["accent"], width=2.0)
+  ```
 
 ## C. 프로세스·흐름
 
@@ -38,6 +102,20 @@ content, then compose primitives to realize it. Patterns are organized by intent
 - **언제**: 순서가 있는 프로세스, 단계별 작업 흐름
 - **구성**: 사각형(단계)을 가로로 3~6개 배치, 화살표로 연결. 각 사각형 안에 단계명(16pt). 각 사각형 아래 1줄 설명(12pt). 핵심 단계는 accent 색
 - **주의**: 7단계 초과 시 두 줄로 꺾기. 분기 3개 이상은 별도 슬라이드
+- **content 스키마**: `{"steps": [{"title": "단계명", "body": "한 줄 설명"}]}`
+- **codegen 규칙**:
+  ```python
+  row = Stack(body, direction="horizontal", gap=0.3, align="center")
+  boxes = []
+  for i, step in enumerate(data["content"]["steps"], start=1):
+      box = row.add_step_box(slide, deck_meta, w=2.4, h=1.5,
+                             number=i, title=step["title"],
+                             body=step.get("body"))
+      boxes.append(box)
+  for a, b in zip(boxes, boxes[1:]):
+      add_arrow(slide, from_=(a, "MR"), to_=(b, "ML"),
+                color=deck_meta["theme"]["accent"], width=1.5)
+  ```
 
 ## D. 시간·일정
 
@@ -71,6 +149,13 @@ content, then compose primitives to realize it. Patterns are organized by intent
 - **언제**: 나열형 정보. 다른 패턴이 맞지 않을 때 기본 선택
 - **구성**: 헤드 메시지 24pt(상단). 그 아래 bullet 16pt, 앞에 ▪ 또는 primary 색 작은 사각형. 최대 5개
 - **주의**: 6개 이상이면 두 컬럼으로 나누거나 슬라이드 분리
+- **content 스키마**: `{"points": ["불릿 텍스트"]}`
+- **codegen 규칙**:
+  ```python
+  s = Stack(body, direction="vertical", gap=0.25)
+  for point in data["content"]["points"]:
+      s.add_card(slide, deck_meta, h=0.7, body=point)
+  ```
 
 ## A. 수치·데이터 표현 (추가)
 
@@ -110,11 +195,34 @@ content, then compose primitives to realize it. Patterns are organized by intent
 - **언제**: 한 옵션의 장점·단점을 양분 비교
 - **구성**: 좌우 2분할. 좌=Pros(green 톤, + 아이콘), 우=Cons(red 톤, − 아이콘). 각 측 3~5 항목
 - **주의**: 항목 수 좌우 동일하게. 한쪽이 너무 많으면 슬라이드 분리
+- **content 스키마**: `{"pros": ["..."], "cons": ["..."]}`
+- **codegen 규칙**:
+  ```python
+  left  = body.col(1, span=6)
+  right = body.col(7, span=6)
+  add_card(slide, deck_meta, rect=left,  title="Pros")
+  add_card(slide, deck_meta, rect=right, title="Cons")
+  s_p = Stack(left.inset(0.4),  direction="vertical", gap=0.2)
+  for p in data["content"]["pros"]:
+      s_p.add_text(slide, p, h=0.5, font_size=14)
+  s_c = Stack(right.inset(0.4), direction="vertical", gap=0.2)
+  for c in data["content"]["cons"]:
+      s_c.add_text(slide, c, h=0.5, font_size=14)
+  ```
 
 ### 3-Column Cards
 - **언제**: 3가지 옵션을 카드로 비교
 - **구성**: 가로 3분할 카드. 각 카드 = 헤더(옵션명) + 본문(특징 bullet 3개). 추천안은 accent 색 + 굵은 테두리 + ★
 - **주의**: 4개 이상이면 카드가 좁아져 가독성↓. Matrix 비교로 전환
+- **content 스키마**: `{"cards": [{"title": "옵션명", "body": "본문 설명"}]}`
+- **codegen 규칙**:
+  ```python
+  cards = data["content"]["cards"][:3]
+  for i, c in enumerate(cards):
+      add_card(slide, deck_meta,
+               rect=body.col(1 + i * 4, span=4),
+               title=c["title"], body=c.get("body", ""))
+  ```
 
 ### Spectrum
 - **언제**: 양극단 사이 위치 시각화. "보수↔혁신", "단순↔복잡"
@@ -154,6 +262,14 @@ content, then compose primitives to realize it. Patterns are organized by intent
 - **언제**: 역사·연혁·일자별 사건 나열
 - **구성**: 가로 라인 + 일정 시점에 점/원. 각 점 위 또는 아래에 날짜·이벤트 텍스트. 위·아래 교차 배치 가능
 - **주의**: 시점 7개 초과 시 가독성↓. 핵심 사건만 굵게
+- **content 스키마**: `{"steps": [{"title": "2020", "body": "사건 설명"}]}`
+- **codegen 규칙**:
+  ```python
+  row = Stack(body, direction="horizontal", gap=0.3, align="center")
+  for i, s in enumerate(data["content"]["steps"], start=1):
+      row.add_step_box(slide, deck_meta, w=2.4, h=1.6,
+                       number=i, title=s["title"], body=s.get("body"))
+  ```
 
 ### Customer Journey
 - **언제**: 고객 단계별 경험 + 감정 곡선
@@ -193,6 +309,15 @@ content, then compose primitives to realize it. Patterns are organized by intent
 - **언제**: 전환·강조 슬라이드. 한 문장으로 임팩트
 - **구성**: 슬라이드 중앙에 1문장(48pt+). 배경 단순한 색. 다른 요소 없음
 - **주의**: 문장 30자 이내. 다른 슬라이드와 강한 대비
+- **content 스키마**: `{"statement": "강조 문장"}`
+- **codegen 규칙** (apply_master 사용 안 함):
+  ```python
+  set_bg(slide, deck_meta["theme"]["background"])
+  rect = place(slide, anchor="MC", w=11, h=2.5)
+  add_text(slide, rect=rect, text=data["content"]["statement"],
+           font_size=44, bold=True,
+           color=deck_meta["theme"]["head_text"], align="center")
+  ```
 
 ### Problem-Solution-Benefit
 - **언제**: 3단 서사. 제안서·기획서 핵심
@@ -235,6 +360,27 @@ content, then compose primitives to realize it. Patterns are organized by intent
 - **언제**: 텍스트 중심 비교표 (Matrix와 다름: 점수 X, 텍스트 O)
 - **구성**: 1행 헤더(옵션명), 1열 라벨(비교 항목). 셀에 짧은 텍스트(예: "$$$", "Yes/No")
 - **주의**: 6×6 초과 시 가독성↓
+- **content 스키마**: `{"headers": ["옵션A", "옵션B"], "rows": [{"label": "기준명", "cells": ["값A", "값B"]}]}`
+- **codegen 규칙**:
+  ```python
+  headers = data["content"]["headers"]
+  rows = data["content"]["rows"]
+  total_rows = len(rows) + 1
+  ncols = 1 + len(headers)
+  span = max(1, 12 // ncols)
+  for j, h in enumerate(headers):
+      add_text(slide, rect=body.row(1, total=total_rows).col(1 + (j + 1) * span, span=span),
+               text=h, font_size=13, bold=True, align="center",
+               color=deck_meta["theme"]["accent"])
+  for i, r in enumerate(rows, start=2):
+      add_text(slide, rect=body.row(i, total=total_rows).col(1, span=span),
+               text=r["label"], font_size=13, bold=True, align="left",
+               color=deck_meta["theme"]["body_text"])
+      for j, val in enumerate(r["cells"]):
+          add_text(slide, rect=body.row(i, total=total_rows).col(1 + (j + 1) * span, span=span),
+                   text=val, font_size=13, align="center",
+                   color=deck_meta["theme"]["body_text"])
+  ```
 
 ## H. 메타·구조
 
