@@ -56,6 +56,7 @@ def build_presentation_v2(
     preamble_text = PREAMBLE_PATH.read_text(encoding="utf-8")
 
     slide_paths: list[Path] = []
+    slide_bodies: list[str] = []
     for s in plan["slides"]:
         idx = s["index"]
         log.stage(f"v2 Stage 2/3: slide {idx} ({s['kind']})")
@@ -63,13 +64,15 @@ def build_presentation_v2(
             s, design_guide=design_guide, preamble_excerpt=preamble_text)
         out_pptx = slides_dir / f"slide_{idx:02d}.pptx"
         try:
-            execute_with_auto_fix(
+            _, final_body = execute_with_auto_fix(
                 body, out_pptx, work_dir=code_dir,
                 design_guide_excerpt=design_guide[:2000],
             )
+            slide_bodies.append(final_body)
         except Exception as exc:  # noqa: BLE001
             log.warn(f"slide {idx} failed after retries: {exc}; placeholder used")
             _write_blank_slide(out_pptx, reason=str(exc))
+            slide_bodies.append("")  # keep alignment
         slide_paths.append(out_pptx)
 
     # Stage 4 — merge
@@ -77,7 +80,23 @@ def build_presentation_v2(
     merge_slides(slide_paths, output_path)
     log.ok(f"-> {output_path}  ({output_path.stat().st_size // 1024} KB)")
 
-    # Stages 5–7 added in Tasks 9 & 10
+    # Stage 5 — visual revision loop
+    final_critiques: list = []
+    if enable_revision:
+        try:
+            from src.pipeline_v2.revision_loop import visual_revision_loop_v2
+            slide_paths, slide_bodies, final_critiques = visual_revision_loop_v2(
+                plan, slide_paths, slide_bodies,
+                workdir=workdir,
+                design_guide_excerpt=design_guide[:2000],
+                max_iterations=max_iter,
+            )
+            merge_slides(slide_paths, output_path)
+            log.ok(f"post-revision deck: {output_path}")
+        except Exception as exc:  # noqa: BLE001
+            log.warn(f"v2 revision loop crashed: {exc}; keeping pre-revision deck")
+
+    # Stages 6–7 added in Task 10
     log.ok(f"v2 done in {time.time() - t0:.1f}s")
     return output_path
 
