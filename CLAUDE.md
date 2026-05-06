@@ -20,6 +20,14 @@ PYTHONIOENCODING=utf-8 python -c "
 from src.pptx.generator import build_from_json
 build_from_json('data/sample_presentation.json', 'output/out.pptx')
 "
+
+# 전체 파이프라인 (recipe 경로, 안전 기본값)
+PYTHONIOENCODING=utf-8 python scripts/run_pipeline.py data/ai_era.json
+
+# 전체 파이프라인 (LLM-codegen 경로, Phase 3 스타일)
+# 슬라이드별 visual_strategy LLM 호출 + 생성 코드 subprocess 실행
+# 실패 시 슬라이드 단위로 recipe 경로 폴백
+PYTHONIOENCODING=utf-8 python scripts/run_pipeline.py data/ai_era.json --codegen
 ```
 
 ## Architecture

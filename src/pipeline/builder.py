@@ -24,6 +24,9 @@ from src.pptx.merger import merge_slides
 from src.pptx.renderer import PlanValidationError, render_slide
 from src.util import log
 
+# Codegen path is imported lazily inside build_presentation so unit tests
+# that exercise the recipe path don't pull in code_runner / subprocess.
+
 
 def _new_prs() -> Presentation:
     prs = Presentation()
@@ -69,6 +72,7 @@ def build_presentation(
     *,
     output_path: Path,
     workdir: Path,
+    use_codegen: bool = False,
 ) -> Path:
     t0 = time.time()
     output_path = Path(output_path)
@@ -76,6 +80,16 @@ def build_presentation(
     workdir.mkdir(parents=True, exist_ok=True)
     slides_dir = workdir / "slides"
     slides_dir.mkdir(exist_ok=True)
+
+    # Lazy imports for the optional codegen path + gallery store.
+    gallery = None
+    render_via_codegen = None
+    if use_codegen:
+        from src.pipeline.codegen_path import render_via_codegen as _rvc
+        from src.pipeline.gallery import Gallery
+        render_via_codegen = _rvc
+        gallery = Gallery.default()
+        log.info(f"codegen path ENABLED — gallery: {gallery.path}")
 
     # ------------------------------------------------------------------
     # Stage 1 — load content
@@ -90,7 +104,11 @@ def build_presentation(
     # Stage 2 — planner (outline + per-slide recipe)
     # ------------------------------------------------------------------
     log.stage("Stage 2: planner")
-    plan = make_plan(content)
+    plan = make_plan(
+        content,
+        with_visual_strategy=use_codegen,
+        gallery=gallery,
+    )
     (workdir / "plan.json").write_text(
         json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8"
     )
@@ -119,13 +137,34 @@ def build_presentation(
 
         out = slides_dir / f"slide_{slide_no:02d}.pptx"
         t_render = time.time()
-        try:
-            _save_single_slide(deck_meta, slide_plan, out)
-            size_kb = out.stat().st_size // 1024
-            log.ok(f"slide_{slide_no:02d}.pptx  {size_kb} KB  ({time.time() - t_render:.1f}s)")
-        except (PlanValidationError, Exception) as exc:  # noqa: BLE001
-            log.warn(f"slide {slide_no} render failed: {exc}; substituting placeholder")
-            _write_placeholder_slide(out, slide_no, head_msg, str(exc))
+
+        rendered = False
+        if use_codegen and render_via_codegen is not None and slide_plan.get("visual_strategy"):
+            try:
+                render_via_codegen(deck_meta, slide_plan, out)
+                rendered = True
+                size_kb = out.stat().st_size // 1024
+                log.ok(
+                    f"slide_{slide_no:02d}.pptx (codegen)  {size_kb} KB  "
+                    f"({time.time() - t_render:.1f}s)"
+                )
+            except Exception as exc:  # noqa: BLE001
+                log.warn(
+                    f"slide {slide_no} codegen failed: {exc}; "
+                    "falling back to recipe path"
+                )
+
+        if not rendered:
+            try:
+                _save_single_slide(deck_meta, slide_plan, out)
+                size_kb = out.stat().st_size // 1024
+                log.ok(
+                    f"slide_{slide_no:02d}.pptx (recipe)  {size_kb} KB  "
+                    f"({time.time() - t_render:.1f}s)"
+                )
+            except (PlanValidationError, Exception) as exc:  # noqa: BLE001
+                log.warn(f"slide {slide_no} render failed: {exc}; substituting placeholder")
+                _write_placeholder_slide(out, slide_no, head_msg, str(exc))
         slide_paths.append(out)
 
     # ------------------------------------------------------------------
@@ -175,6 +214,18 @@ def build_presentation(
         encoding="utf-8",
     )
     log.ok(f"deck critique saved -> {workdir / 'deck_critique.json'}")
+
+    # ------------------------------------------------------------------
+    # Stage 7 — gallery harvest (codegen path only)
+    # ------------------------------------------------------------------
+    if use_codegen and gallery is not None:
+        try:
+            critiques_path = workdir / "iter_1" / "critiques.json"
+            saved = gallery.harvest_from_run(plan, critiques_path)
+            if saved:
+                log.ok(f"gallery: saved {saved} high-scoring slide(s) -> {gallery.path}")
+        except Exception as exc:  # noqa: BLE001
+            log.warn(f"gallery harvest skipped: {exc}")
 
     total_elapsed = time.time() - t0
     log.stage("Done")

@@ -328,6 +328,45 @@ class KnowledgeBlock(BaseModel):
 _QUESTION_TAILS = ("?", "까", "는가", "할까", "일까", "인가")
 
 
+class VisualStrategy(BaseModel):
+    """Per-slide free-form visual strategy (legacy Phase 1b).
+
+    Attached to SlideContent when the codegen path is enabled. The recipe
+    path ignores this field; the LLM-codegen path consumes `layout_hint`
+    as natural-language layout instruction.
+
+    `approach` is a snake_case identifier the planner LLM coins per slide;
+    distinct slides should pick distinct names (gallery enforces variety).
+    """
+    approach: str
+    rationale: str = ""
+    layout_hint: str
+    key_elements: List[str] = Field(default_factory=list)
+
+    model_config = {"extra": "ignore"}
+
+    @field_validator("approach", mode="before")
+    @classmethod
+    def _norm_approach(cls, v):
+        if v is None or not str(v).strip():
+            raise ValueError("visual_strategy.approach must be non-empty")
+        s = str(v).strip()
+        # Only allow [a-z0-9_]; LLM occasionally emits camelCase or spaces.
+        import re as _re
+        s = _re.sub(r"\s+", "_", s).lower()
+        s = _re.sub(r"[^a-z0-9_]", "", s)
+        if not s:
+            raise ValueError(f"visual_strategy.approach reduced to empty: {v!r}")
+        return s
+
+    @field_validator("layout_hint", mode="before")
+    @classmethod
+    def _require_hint(cls, v):
+        if v is None or not str(v).strip():
+            raise ValueError("visual_strategy.layout_hint must be non-empty")
+        return str(v).strip()
+
+
 class SlideContent(BaseModel):
     """Stage 2 LLM output — content layer only. No recipe/data here.
 
@@ -343,6 +382,7 @@ class SlideContent(BaseModel):
     key_takeaway: str
     key_takeaway_derivation: str = ""
     knowledge: KnowledgeBlock = Field(default_factory=KnowledgeBlock)
+    visual_strategy: Optional[VisualStrategy] = None
 
     model_config = {"extra": "ignore"}
 

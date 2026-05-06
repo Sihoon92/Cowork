@@ -9,7 +9,7 @@ from src.llm.client import chat, DEFAULT_MODEL
 from src.pipeline.checks import check_slide_content
 from src.pipeline.recipes import RECIPES
 from src.pipeline.schemas import (
-    SlideContent, SlideOutline, SlidePlan, SlideRecipe,
+    SlideContent, SlideOutline, SlidePlan, SlideRecipe, VisualStrategy,
 )
 from src.pipeline.selector import select_recipe
 from src.util import log
@@ -467,6 +467,69 @@ def generate_slide_content(
     raise ValueError(f"slide_content invalid after retries:\n{last_err}")
 
 
+_FRAMING_INTENTS_FOR_STRATEGY = {
+    "deck_opening", "closing_thesis", "section_transition",
+}
+
+
+def generate_visual_strategy(
+    content: SlideContent,
+    *,
+    model: str = DEFAULT_MODEL,
+    gallery_examples: list[dict] | None = None,
+) -> VisualStrategy | None:
+    """Stage 2.5 — produce a per-slide layout prescription (legacy Phase 1b).
+
+    Returns None for framing slides (cover/closing/divider) — those use
+    fixed full-canvas layouts.
+
+    Failures (LLM error, schema invalid) return None; the codegen path
+    falls back to a generic hint built from intent_label.
+    """
+    if content.intent_label in _FRAMING_INTENTS_FOR_STRATEGY:
+        return None
+
+    template = (PROMPTS_DIR / "visual_strategy.md").read_text(encoding="utf-8")
+
+    # Build optional gallery references block
+    if gallery_examples:
+        lines = [
+            "================================================================================",
+            "## GALLERY — high-scoring past slides for this intent",
+            "================================================================================",
+        ]
+        for ex in gallery_examples[:3]:
+            lines.append(
+                f"- score={ex.get('score', '?')}  approach={ex.get('approach', '?')!r}\n"
+                f"  layout_hint: {ex.get('layout_hint', '')}"
+            )
+        gallery_block = "\n".join(lines)
+    else:
+        gallery_block = ""
+
+    content_json = json.dumps(content.model_dump(), ensure_ascii=False, indent=2)
+    prompt = template.format(
+        content_json=content_json,
+        gallery_block=gallery_block,
+    )
+
+    log.step(f"LLM call: visual_strategy for slide {content.slide_no}")
+    try:
+        parsed = _call_llm_with_json_retry(prompt, model=model, max_retries=1)
+    except ValueError as exc:
+        log.warn(f"visual_strategy slide {content.slide_no}: parse failed: {exc}")
+        return None
+    if not isinstance(parsed, dict):
+        log.warn(f"visual_strategy slide {content.slide_no}: not a JSON object")
+        return None
+
+    try:
+        return VisualStrategy.model_validate(parsed)
+    except Exception as exc:  # noqa: BLE001
+        log.warn(f"visual_strategy slide {content.slide_no}: schema invalid: {exc}")
+        return None
+
+
 def _fallback_slide_content(outline: dict) -> SlideContent:
     """When LLM cannot produce valid content after retries.
 
@@ -498,12 +561,26 @@ def _section_title_for(deck_meta: dict, section_id: str | None) -> str:
     return (deck_meta.get("section_titles") or {}).get(section_id, "")
 
 
-def make_plan(content: dict, *, model: str = DEFAULT_MODEL) -> dict:
+def make_plan(
+    content: dict,
+    *,
+    model: str = DEFAULT_MODEL,
+    with_visual_strategy: bool = False,
+    gallery=None,
+) -> dict:
     """v2: outline → per-slide content (LLM) → selector (code) → self-review.
 
     Returns dict with shape:
         {"deck_meta": {...}, "slides": [SlidePlan dump, ...]}
     where each SlidePlan = {"content": SlideContent dump, "recipe": str, "data": dict}.
+
+    Args:
+        with_visual_strategy: when True, an extra LLM call per body slide
+            produces `content.visual_strategy` (Phase 1b style). Required
+            for the codegen path; ignored by the deterministic recipe path.
+        gallery: optional Gallery instance. When provided alongside
+            with_visual_strategy=True, top-K past examples for the slide's
+            intent are injected into the visual_strategy prompt.
     """
     deck_meta = derive_deck_meta(content)
     outline = generate_outline(content, model=model)
@@ -531,6 +608,16 @@ def make_plan(content: dict, *, model: str = DEFAULT_MODEL) -> dict:
             )
             slide_content = _fallback_slide_content(o)
             fallback_count += 1
+
+        if with_visual_strategy:
+            examples = gallery.examples_for(slide_content.intent_label) if gallery else []
+            strategy = generate_visual_strategy(
+                slide_content, model=model, gallery_examples=examples,
+            )
+            if strategy is not None:
+                slide_content = slide_content.model_copy(
+                    update={"visual_strategy": strategy}
+                )
 
         # Stage 4: selector (code, deterministic)
         sel = select_recipe(slide_content)
@@ -572,6 +659,7 @@ def _flatten_slide_for_render(plan_dump: dict) -> dict:
         "intent_label": c["intent_label"],
         "recipe": plan_dump["recipe"],
         "data": plan_dump["data"],
+        "visual_strategy": c.get("visual_strategy"),  # None on framing slides
         "_full": plan_dump,   # so_what + knowledge + derivations preserved
     }
 

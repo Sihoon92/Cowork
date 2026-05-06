@@ -37,6 +37,13 @@ def _parse_args(root: Path) -> argparse.Namespace:
         default=None,
         help="Workdir for plan/slides/critique artifacts (default: <output-parent>/work_<stem>)",
     )
+    parser.add_argument(
+        "--codegen",
+        action="store_true",
+        help="Use the LLM-codegen path (Phase 3 style) instead of fixed recipes. "
+             "Adds a per-slide visual_strategy LLM call and runs generated "
+             "python-pptx code in a subprocess. Falls back to recipes per-slide on failure.",
+    )
     return parser.parse_args()
 
 
@@ -71,7 +78,12 @@ def main():
     log.info(f"workdir: {workdir}")
 
     content = json.loads(content_path.read_text(encoding="utf-8"))
-    out = build_presentation(content, output_path=output_path, workdir=workdir)
+    out = build_presentation(
+        content,
+        output_path=output_path,
+        workdir=workdir,
+        use_codegen=args.codegen,
+    )
     print(f"OK -> {out}")
 
     log.stage("Done")

@@ -9,6 +9,7 @@ __pycache__/
 .env
 .env.local
 output/
+gallery/
 temp_image.png
 .vscode/
 .claude/scheduled_tasks.lock
