@@ -181,3 +181,55 @@ def test_build_slide_data_includes_required_keys():
     assert data["slide_no"] == 2
     assert data["content"]["intent_label"] == "single_metric_emphasis"
     assert data["visual_strategy"]["approach"] == "test_approach"
+
+
+def test_render_via_codegen_persists_code_artifact(tmp_path: Path, monkeypatch):
+    """When code_dir is provided, every attempt is dumped to disk for audit."""
+    monkeypatch.setattr(
+        codegen_path, "generate_slide_code",
+        lambda *, layout_hint, pattern_guideline, slide_data, model: _VALID_SCRIPT,
+    )
+
+    code_dir = tmp_path / "codegen"
+    out = tmp_path / "slide_02.pptx"
+    codegen_path.render_via_codegen(
+        _deck_meta(), _make_flat_slide(), out, code_dir=code_dir,
+    )
+
+    expected = code_dir / "slide_02_v1.py"
+    assert expected.exists(), f"missing artifact: {list(code_dir.glob('*'))}"
+    text = expected.read_text(encoding="utf-8")
+    assert "def add_slide" in text
+
+
+def test_render_via_codegen_persists_retry_artifacts(tmp_path: Path, monkeypatch):
+    """Retry attempts each get their own _vN_retry artifact file."""
+    call_count = {"n": 0}
+
+    def fake_generate(*, layout_hint, pattern_guideline, slide_data, model):
+        call_count["n"] += 1
+        return _BROKEN_SCRIPT if call_count["n"] == 1 else _VALID_SCRIPT
+
+    monkeypatch.setattr(codegen_path, "generate_slide_code", fake_generate)
+
+    code_dir = tmp_path / "codegen"
+    out = tmp_path / "slide_02.pptx"
+    codegen_path.render_via_codegen(
+        _deck_meta(), _make_flat_slide(), out, code_dir=code_dir,
+    )
+
+    artifacts = sorted(p.name for p in code_dir.glob("slide_02_*.py"))
+    assert artifacts == ["slide_02_v1.py", "slide_02_v2_retry.py"], artifacts
+
+
+def test_render_via_codegen_no_code_dir_skips_persistence(tmp_path: Path, monkeypatch):
+    """code_dir=None must not raise even though _save_code_artifact runs."""
+    monkeypatch.setattr(
+        codegen_path, "generate_slide_code",
+        lambda *, layout_hint, pattern_guideline, slide_data, model: _VALID_SCRIPT,
+    )
+    out = tmp_path / "slide.pptx"
+    codegen_path.render_via_codegen(
+        _deck_meta(), _make_flat_slide(), out, code_dir=None,
+    )
+    assert out.exists()

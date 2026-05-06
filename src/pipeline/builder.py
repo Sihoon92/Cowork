@@ -84,12 +84,15 @@ def build_presentation(
     # Lazy imports for the optional codegen path + gallery store.
     gallery = None
     render_via_codegen = None
+    codegen_artifacts_dir: Path | None = None
     if use_codegen:
         from src.pipeline.codegen_path import render_via_codegen as _rvc
         from src.pipeline.gallery import Gallery
         render_via_codegen = _rvc
         gallery = Gallery.default()
+        codegen_artifacts_dir = workdir / "codegen"
         log.info(f"codegen path ENABLED — gallery: {gallery.path}")
+        log.info(f"codegen artifacts: {codegen_artifacts_dir}")
 
     # ------------------------------------------------------------------
     # Stage 1 — load content
@@ -141,7 +144,10 @@ def build_presentation(
         rendered = False
         if use_codegen and render_via_codegen is not None and slide_plan.get("visual_strategy"):
             try:
-                render_via_codegen(deck_meta, slide_plan, out)
+                render_via_codegen(
+                    deck_meta, slide_plan, out,
+                    code_dir=codegen_artifacts_dir,
+                )
                 rendered = True
                 size_kb = out.stat().st_size // 1024
                 log.ok(

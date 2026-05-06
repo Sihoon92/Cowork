@@ -45,7 +45,7 @@ def critique_deck_storyline(plan: dict, *, model: str = DEFAULT_MODEL) -> dict:
 # Visual critique — needs LibreOffice/soffice to convert pptx → png
 # ---------------------------------------------------------------------------
 
-def _conversion_tools_available() -> bool:
+def conversion_tools_available() -> bool:
     """LibreOffice (soffice) is required to convert pptx → png for the grid."""
     return shutil.which("soffice") is not None or shutil.which("libreoffice") is not None
 
@@ -75,7 +75,7 @@ def make_thumbnail_grid(
 
     Returns None if conversion tools or Pillow are unavailable.
     """
-    if not _conversion_tools_available():
+    if not conversion_tools_available():
         return None
     try:
         from PIL import Image

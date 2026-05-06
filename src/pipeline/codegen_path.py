@@ -75,6 +75,24 @@ def _build_slide_data(deck_meta: dict, flat_slide: dict) -> dict:
     }
 
 
+def _save_code_artifact(code: str, code_dir: Path | None, slide_no: int,
+                         tag: str) -> None:
+    """Persist generated code to disk for post-mortem audit.
+
+    `tag` distinguishes initial vs retry attempts (e.g. "v1", "v2_retry").
+    Failures here are non-fatal — audit shouldn't break a working build.
+    """
+    if code_dir is None:
+        return
+    try:
+        code_dir.mkdir(parents=True, exist_ok=True)
+        (code_dir / f"slide_{slide_no:02d}_{tag}.py").write_text(
+            code, encoding="utf-8",
+        )
+    except OSError as exc:
+        log.warn(f"could not save codegen artifact slide {slide_no}: {exc}")
+
+
 def render_via_codegen(
     deck_meta: dict,
     flat_slide: dict,
@@ -82,8 +100,14 @@ def render_via_codegen(
     *,
     model: str = DEFAULT_MODEL,
     max_retries: int = 2,
+    code_dir: Path | None = None,
 ) -> Path:
     """Generate + execute python-pptx code for one slide. Returns out_path on success.
+
+    Args:
+        code_dir: optional directory to persist generated code to. Each
+            attempt writes `slide_<NN>_<tag>.py` so users can inspect
+            what the LLM produced after the run.
 
     Raises CodeExecutionError if the script can't be made to run after retries.
     """
@@ -100,29 +124,38 @@ def render_via_codegen(
 
     pattern_guideline = GUIDELINE_PATH.read_text(encoding="utf-8")
 
+    slide_no = flat_slide["slide_no"]
     slide_data = _build_slide_data(deck_meta, flat_slide)
-    log.step(f"LLM call: codegen for slide {flat_slide['slide_no']}")
+    log.step(f"LLM call: codegen for slide {slide_no}")
     code = generate_slide_code(
         layout_hint=layout_hint,
         pattern_guideline=pattern_guideline,
         slide_data=slide_data,
         model=model,
     )
+    _save_code_artifact(code, code_dir, slide_no, "v1")
+
+    retry_counter = {"n": 1}
 
     def _fix_callback(prev_code: str, error: str, _data: dict) -> str:
         log.warn(
-            f"slide {flat_slide['slide_no']} codegen retry: {error[:160]}"
+            f"slide {slide_no} codegen retry: {error[:160]}"
         )
         retry_hint = (
             f"{layout_hint}\n\nPREVIOUS ATTEMPT FAILED with this error:\n{error}\n"
             f"Fix the listed error and re-emit the COMPLETE script."
         )
-        return generate_slide_code(
+        new_code = generate_slide_code(
             layout_hint=retry_hint,
             pattern_guideline=pattern_guideline,
             slide_data=slide_data,
             model=model,
         )
+        retry_counter["n"] += 1
+        _save_code_artifact(
+            new_code, code_dir, slide_no, f"v{retry_counter['n']}_retry",
+        )
+        return new_code
 
     return render_slide_with_retry(
         code, slide_data, out_path,

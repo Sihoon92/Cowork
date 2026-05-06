@@ -112,10 +112,12 @@ def test_use_codegen_branch_calls_codegen_then_falls_back_per_slide(
     # 2. Mock the codegen entry point. Slide 1 succeeds (writes a tiny .pptx);
     #    slide 2 raises CodeExecutionError so the fallback kicks in.
     codegen_calls: list[int] = []
+    code_dirs_seen: list[Path | None] = []
 
-    def fake_codegen(deck_meta, flat_slide, out_path):
+    def fake_codegen(deck_meta, flat_slide, out_path, **kwargs):
         slide_no = flat_slide["slide_no"]
         codegen_calls.append(slide_no)
+        code_dirs_seen.append(kwargs.get("code_dir"))
         if slide_no == 1:
             # succeed — write a real one-slide pptx so size_kb logging works
             prs = Presentation()
@@ -170,6 +172,12 @@ def test_use_codegen_branch_calls_codegen_then_falls_back_per_slide(
     # Codegen was attempted for slides 1 and 2, NOT for the framing slide 3
     # (which has visual_strategy=None — guard in builder).
     assert codegen_calls == [1, 2], f"unexpected codegen call sequence: {codegen_calls}"
+
+    # And builder passed code_dir=<workdir>/codegen so artifacts get persisted.
+    expected_code_dir = workdir / "codegen"
+    assert all(cd == expected_code_dir for cd in code_dirs_seen), (
+        f"code_dirs_seen mismatch: {code_dirs_seen}, expected {expected_code_dir}"
+    )
 
     # Slide 1 was written by the codegen stub — should be a real (tiny) pptx
     s1 = workdir / "slides" / "slide_01.pptx"

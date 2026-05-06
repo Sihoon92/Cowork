@@ -587,6 +587,7 @@ def make_plan(
 
     plans: list[dict] = []
     recent_intents: list[str] = []
+    used_approaches: set[str] = set()
     total = len(outline)
     fallback_count = 0
 
@@ -615,6 +616,15 @@ def make_plan(
                 slide_content, model=model, gallery_examples=examples,
             )
             if strategy is not None:
+                # Legacy Phase 1b rule: every approach name should be unique
+                # across the deck. We surface a warning so users notice when
+                # the LLM lapses into a single template — but DON'T reject.
+                if strategy.approach in used_approaches:
+                    log.warn(
+                        f"slide {slide_content.slide_no} reused approach "
+                        f"{strategy.approach!r}; deck variety degraded"
+                    )
+                used_approaches.add(strategy.approach)
                 slide_content = slide_content.model_copy(
                     update={"visual_strategy": strategy}
                 )
