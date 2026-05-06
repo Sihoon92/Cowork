@@ -66,7 +66,8 @@ def build_presentation_v2(
         try:
             _, final_body = execute_with_auto_fix(
                 body, out_pptx, work_dir=code_dir,
-                design_guide_excerpt=design_guide[:2000],
+                design_guide_excerpt=design_guide,
+                max_retries=5,
             )
             slide_bodies.append(final_body)
         except Exception as exc:  # noqa: BLE001

@@ -14,10 +14,21 @@ or `prs.save`.
 `PRIMARY` `ACCENT` `INK` `MUTED` `BG` `SURFACE`
 
 ## Typography tokens (use these — never hardcode pt)
-`FONT_HEAD` `FONT_BODY`
-`SIZE_HEAD` (36) `SIZE_SUB` (20) `SIZE_BODY` (14) `SIZE_CAP` (11)
+`FONT_HEAD` `FONT_BODY` — string font names.
+`SIZE_HEAD` `SIZE_SUB` `SIZE_BODY` `SIZE_CAP` — these are ALREADY
+`Pt(...)` instances (Pt(36), Pt(20), Pt(14), Pt(11)). Assign them
+**directly** to `font.size`. Do NOT wrap them in `Pt(...)` again.
 
-For headline emphasis larger than `SIZE_HEAD`, use `Pt(48)` etc. directly.
+```python
+# ✅ correct
+r.font.size = SIZE_HEAD
+# ❌ wrong — double-wrap explodes the value 12700×, raising
+#    ValueError: value must be in range 100 to 400000 inclusive
+r.font.size = Pt(SIZE_HEAD)
+```
+
+For headline emphasis larger than `SIZE_HEAD`, use `Pt(48)` etc. directly
+on a literal int.
 
 ## Recipe snippets (illustrative; not mandatory)
 
@@ -79,16 +90,79 @@ slide.shapes.add_connector(MSO_CONNECTOR.STRAIGHT,
                             center_x, center_y, card_x, card_y + card_h // 2)
 ```
 
-## Anti-patterns (NEVER do these)
+## Forbidden — these crash the slide. Hard rules, not style suggestions.
 
-- ❌ Hardcoded magic coordinates like `Inches(2.34)`. Compute from
-  `SLIDE_W` / `SLIDE_H` and the padding budget.
-- ❌ Hex literals like `RGBColor(0xAB, 0xCD, 0xEF)`. Use the tokens.
-- ❌ External file paths (`open("foo.png")`). Generate everything inline
-  with matplotlib + `io.BytesIO`.
-- ❌ Hardcoded font names like `"Arial"`. Use `FONT_HEAD` / `FONT_BODY`.
-- ❌ Adding new `import` statements. Everything you need is in the preamble.
-- ❌ Calling `prs.save(...)` or `prs.slides.add_slide(...)`. The footer does it.
+If you find yourself about to write any of these, STOP and pick a
+different approach. The retry loop will not save you — these errors
+have no "fix the filename" or "fix the index" workaround. The whole
+idiom is wrong for this environment.
+
+### F1. NEVER pass a string filepath to `add_picture`
+The slide_codes directory ships with **zero image assets on disk**.
+Any filepath string — including made-up names like `"diagram.png"`,
+`"path_to_chart.png"`, `"icon.svg"` — raises `FileNotFoundError`.
+
+```python
+# ❌ WRONG — guaranteed FileNotFoundError, no matter what string you pick
+slide.shapes.add_picture("diagram.png", x, y, w, h)
+slide.shapes.add_picture("path_to_code_generation_diagram.png", x, y, w, h)
+
+# ✅ ONLY acceptable form: in-memory BytesIO from matplotlib
+import io
+fig, ax = plt.subplots(figsize=(4, 4), dpi=150); ax.pie([60, 40])
+buf = io.BytesIO(); fig.savefig(buf, format="png"); plt.close(fig); buf.seek(0)
+slide.shapes.add_picture(buf, x, y, w, h)
+```
+
+If you cannot generate the visual with matplotlib, **drop the picture
+entirely** and represent the idea with shapes + text.
+
+### F2. NEVER use `slide.placeholders` or `slide.shapes.title`
+The footer creates the slide via `prs.slide_layouts[6]` (BLANK layout).
+A blank slide has **no placeholders at all**. Any access — including
+`slide.placeholders[0]`, `slide.placeholders[1]`, `slide.shapes.title` —
+raises `KeyError: 'no placeholder on this slide with idx == N'`.
+
+```python
+# ❌ WRONG — guaranteed KeyError on a blank layout
+title = slide.placeholders[1]; title.text = "Hello"
+slide.shapes.title.text = "Hello"
+
+# ✅ Add a textbox shape directly
+tb = slide.shapes.add_textbox(left, top, width, height)
+tf = tb.text_frame; tf.word_wrap = True
+r = tf.paragraphs[0].add_run(); r.text = "Hello"
+r.font.name = FONT_HEAD; r.font.size = Pt(SIZE_HEAD); r.font.color.rgb = INK
+```
+
+### F3. NEVER add a second slide or call `prs.save(...)`
+The footer already created `prs.slides[0]` and will save the file at
+the end. Calling `prs.slides.add_slide(...)` or `prs.save(...)` yourself
+corrupts the output.
+
+### F4. NEVER add new `import` statements
+Everything you need (`Pt`, `Inches`, `RGBColor`, `MSO_SHAPE`,
+`MSO_CONNECTOR`, `plt`, `io`, color/typography tokens) is already in
+the preamble. A new import usually means you are reaching for a feature
+that is not supported in this environment.
+
+### F5. NEVER wrap `SIZE_*` tokens in `Pt(...)`
+`SIZE_HEAD`, `SIZE_SUB`, `SIZE_BODY`, `SIZE_CAP` are already `Pt(...)`
+instances. Wrapping them again multiplies the value by 12700 and
+raises `ValueError: value must be in range 100 to 400000 inclusive`.
+
+```python
+# ❌ WRONG — guaranteed ValueError
+r.font.size = Pt(SIZE_HEAD)
+# ✅ correct
+r.font.size = SIZE_HEAD
+```
+
+### F6. NEVER hardcode design constants
+- ❌ `RGBColor(0xAB, 0xCD, 0xEF)` → use `PRIMARY` / `ACCENT` / `INK` / `MUTED` / `BG` / `SURFACE`.
+- ❌ `Pt(13)` for body copy → use `SIZE_HEAD` / `SIZE_SUB` / `SIZE_BODY` / `SIZE_CAP`.
+- ❌ `"Arial"`, `"Helvetica"` → use `FONT_HEAD` / `FONT_BODY`.
+- ❌ `Inches(2.34)` magic positions → derive from `SLIDE_W`, `SLIDE_H`, and a padding budget.
 
 ## Output
 

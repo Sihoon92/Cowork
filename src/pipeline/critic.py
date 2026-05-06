@@ -25,8 +25,10 @@ PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
 def critique_deck_storyline(plan: dict, *, model: str = DEFAULT_MODEL) -> dict:
     """Feed head_messages of all slides to LLM. Return {issues, verdict}."""
     log.step("LLM call: deck storyline critique")
+    # Support both v1 (slide_no/head_message) and v2 (index/headline) plan schemas.
     head_lines = "\n".join(
-        f"{s['slide_no']}. {s['head_message']}"
+        f"{s.get('slide_no', s.get('index', '?'))}. "
+        f"{s.get('head_message', s.get('headline', ''))}"
         for s in plan.get("slides", [])
     )
     template = (PROMPTS_DIR / "deck_storyline_critique.md").read_text(encoding="utf-8")
