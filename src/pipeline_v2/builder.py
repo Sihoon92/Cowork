@@ -96,7 +96,62 @@ def build_presentation_v2(
         except Exception as exc:  # noqa: BLE001
             log.warn(f"v2 revision loop crashed: {exc}; keeping pre-revision deck")
 
-    # Stages 6–7 added in Task 10
+    # Stage 6 — deck-level critique (reuse v1 critic)
+    log.stage("v2 Stage 6: deck critique")
+    from src.pipeline.critic import critique_deck_storyline, critique_deck_visual
+    try:
+        storyline = critique_deck_storyline(plan)
+    except Exception as exc:  # noqa: BLE001
+        log.warn(f"storyline critique skipped: {exc}")
+        storyline = {"verdict": "SKIP", "reason": str(exc)}
+    try:
+        visual_consistency = critique_deck_visual(slide_paths, out_dir=workdir)
+    except Exception as exc:  # noqa: BLE001
+        log.warn(f"visual critique skipped: {exc}")
+        visual_consistency = {"verdict": "SKIP", "reason": str(exc)}
+    (workdir / "deck_critique.json").write_text(
+        json.dumps({"storyline": storyline,
+                    "visual_consistency": visual_consistency},
+                   ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    # Stage 7 — gallery append (only if enabled and we have critiques)
+    if enable_gallery and gallery is not None and final_critiques:
+        from datetime import datetime
+        from src.pipeline_v2.schemas import GalleryEntry
+        log.stage("v2 Stage 7: gallery append")
+        deck_id = workdir.name
+        appended = 0
+        for n, crit in enumerate(final_critiques):
+            slide_plan = plan["slides"][n]
+            if slide_plan["kind"] != "body":
+                continue
+            vs = slide_plan.get("visual_strategy") or {}
+            cat = slide_plan.get("content_structure")
+            if not cat or crit.min_score < 8 or not slide_bodies[n]:
+                continue
+            entry = GalleryEntry(
+                deck_id=deck_id,
+                slide_no=slide_plan["index"],
+                category=cat,
+                approach=vs.get("approach", "(unknown)"),
+                rationale=vs.get("rationale", ""),
+                layout_hint=vs.get("layout_hint", ""),
+                key_elements=vs.get("key_elements", []),
+                scores={
+                    "strategy": crit.score_strategy,
+                    "visual": crit.score_visual,
+                    "content": crit.score_content,
+                },
+                quality_score=float(crit.min_score),
+                code_snippet=slide_bodies[n],
+                created_at=datetime.utcnow().isoformat(timespec="seconds"),
+            )
+            gallery.append(entry)
+            appended += 1
+        log.ok(f"gallery: appended {appended} entries")
+
     log.ok(f"v2 done in {time.time() - t0:.1f}s")
     return output_path
 
