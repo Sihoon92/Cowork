@@ -28,6 +28,11 @@ PYTHONIOENCODING=utf-8 python scripts/run_pipeline.py data/ai_era.json
 # 슬라이드별 visual_strategy LLM 호출 + 생성 코드 subprocess 실행
 # 실패 시 슬라이드 단위로 recipe 경로 폴백
 PYTHONIOENCODING=utf-8 python scripts/run_pipeline.py data/ai_era.json --codegen
+
+# codegen 프롬프트 미리보기 (LLM 토큰 0개)
+# 한번 run_pipeline 으로 plan.json 을 먼저 생성한 뒤 슬라이드 단위로 inspect
+PYTHONIOENCODING=utf-8 python scripts/dump_codegen_prompt.py output/work_ai_era/plan.json 2
+PYTHONIOENCODING=utf-8 python scripts/dump_codegen_prompt.py output/work_ai_era/plan.json 2 --no-strategy
 ```
 
 ## Architecture
