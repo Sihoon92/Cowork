@@ -61,3 +61,25 @@ data/
 - **UnicodeEncodeError on Windows**: always set `PYTHONIOENCODING=utf-8`.
 - **Slide rendering fails after 3 retries**: inspect `output/work/slides/` and stderr; the LLM may need a smaller layout hint or simpler content. Reduce slide count or use a richer model.
 - **Pretendard font missing**: change `_DEFAULT_FONTS` in `src/pipeline/planner.py` to `Malgun Gothic` (Windows) or another installed Korean font.
+
+## v2 — Freeform Codegen Pipeline
+
+A second pipeline that lives alongside the v1 recipe pipeline. v2 generates
+python-pptx code per slide via LLM, executes each in a subprocess, and
+refines via vision-LLM critique. See
+`docs/superpowers/specs/2026-05-06-v2-freeform-codegen-design.md`.
+
+```bash
+# Side-by-side run on the same input:
+PYTHONIOENCODING=utf-8 python scripts/run_pipeline.py    data/sample_content.json
+PYTHONIOENCODING=utf-8 python scripts/run_pipeline_v2.py data/sample_content.json
+
+# Outputs:
+# output/sample_content.pptx       (v1)
+# output/sample_content_v2.pptx    (v2)
+
+# v2 flags:
+python scripts/run_pipeline_v2.py data/foo.json --no-revision   # baseline
+python scripts/run_pipeline_v2.py data/foo.json --no-gallery    # no learning
+python scripts/run_pipeline_v2.py data/foo.json --max-iter 1    # cheap revision
+```
